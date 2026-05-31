@@ -1,4 +1,8 @@
 {
+  "buildCommand": null,
+  "outputDirectory": ".",
+  "installCommand": "npm install",
+  "framework": null,
   "rewrites": [
     { "source": "/api/tree",  "destination": "/api/tree.js"  },
     { "source": "/api/story", "destination": "/api/story.js" }
