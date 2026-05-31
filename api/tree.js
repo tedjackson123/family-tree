@@ -4,8 +4,8 @@
 // It auto-sets UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN env vars.
 
 function getRedis() {
-  const url   = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const url   = process.env.KV_REST_API_URL   || process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) throw Object.assign(new Error('Redis not configured'), { code: 'NO_REDIS' });
   const { Redis } = require('@upstash/redis');
   return new Redis({ url, token });
