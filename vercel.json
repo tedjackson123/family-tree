@@ -1,12 +1,7 @@
 {
-  "version": 2,
-  "outputDirectory": "public",
-  "builds": [
-    { "src": "api/*.js", "use": "@vercel/node" }
-  ],
-  "routes": [
-    { "src": "/api/tree",  "dest": "/api/tree.js"  },
-    { "src": "/api/story", "dest": "/api/story.js" },
-    { "src": "/(.*)",      "dest": "/$1" }
+  "rewrites": [
+    { "source": "/api/tree",  "destination": "/api/tree.js"  },
+    { "source": "/api/story", "destination": "/api/story.js" },
+    { "source": "/(.*)",      "destination": "/public/index.html" }
   ]
 }
