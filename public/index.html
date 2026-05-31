@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Family Tree</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+:root {
+  --warm-bg: #faf6f0;
+  --card-bg: #fffdf9;
+  --accent: #8b6914;
+  --accent-light: #c9a84c;
+  --text: #3a2e1a;
+  --text-muted: #7a6e5a;
+  --border: #e0d5c4;
+  --danger: #b5442e;
+  --success: #4a7c3f;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Georgia', serif; background: var(--warm-bg); color: var(--text); }
+button { font-family: inherit; cursor: pointer; }
+input, textarea, select { font-family: 'Segoe UI', sans-serif; font-size: 14px; }
+
+.app { max-width: 1400px; margin: 0 auto; padding: 20px; }
+.header { text-align: center; padding: 20px 0 10px; }
+.header h1 { font-size: 2.2em; color: var(--accent); letter-spacing: 1px; }
+.header p { color: var(--text-muted); font-style: italic; margin-top: 4px; }
+
+.tabs { display: flex; gap: 4px; justify-content: center; margin: 20px 0; flex-wrap: wrap; }
+.tab { padding: 10px 24px; border: 2px solid var(--border); background: var(--card-bg); color: var(--text-muted);
+  border-radius: 8px 8px 0 0; font-size: 15px; transition: all 0.2s; }
+.tab:hover { background: #f5eed9; }
+.tab.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+.panel { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 24px;
+  min-height: 500px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
+
+/* ── Responsive / tablet ───────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .app { padding: 12px; }
+  .header h1 { font-size: 1.6em; }
+  .tabs { gap: 3px; margin: 12px 0; }
+  .tab { padding: 8px 14px; font-size: 13px; }
+  .panel { padding: 14px; }
+  .people-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+  .form-grid { grid-template-columns: 1fr; }
+  .modal { padding: 18px; width: 96%; }
+  .form-actions { flex-wrap: wrap; }
+  .sphere-wrap { flex-direction: column; }
+  .sphere-sidebar { width: 100%; }
+  .sphere-list { max-height: 160px; display: flex; flex-wrap: wrap; gap: 4px; }
+  .sphere-list-item { padding: 5px 10px; font-size: 12px; white-space: nowrap; }
+  .sphere-container { height: 420px; }
+  .btn { padding: 9px 14px; font-size: 13px; }
+  .people-toolbar { gap: 6px; }
+  /* Larger tap targets */
+  .form-row input, .form-row textarea, .form-row select { padding: 10px 12px; font-size: 16px; }
+  .rel-row select, .rel-row button { font-size: 14px; }
+}
+
+/* People Grid */
+.people-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
+.btn { padding: 8px 18px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; transition: all 0.2s; }
+.btn-primary { background: var(--accent); color: white; }
+.btn-primary:hover { background: #6d5310; }
+.btn-danger { background: var(--danger); color: white; }
+.btn-danger:hover { background: #8f3622; }
+.btn-secondary { background: var(--border); color: var(--text); }
+.btn-secondary:hover { background: #d0c5b4; }
+.btn-success { background: var(--success); color: white; }
+
+.people-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+.person-card { background: var(--warm-bg); border: 1px solid var(--border); border-radius: 10px; padding: 16px;
+  cursor: pointer; transition: all 0.2s; position: relative; }
+.person-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); border-color: var(--accent-light); }
+.person-card h3 { color: var(--accent); font-size: 1.1em; margin-bottom: 4px; }
+.person-card .maiden { color: var(--text-muted); font-style: italic; font-size: 0.9em; }
+.person-card .detail { font-size: 0.85em; color: var(--text-muted); margin-top: 2px; }
+
+/* Modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center;
+  justify-content: center; z-index: 1000; }
+.modal { background: var(--card-bg); border-radius: 12px; padding: 28px; width: 90%; max-width: 560px;
+  max-height: 90vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
+.modal h2 { color: var(--accent); margin-bottom: 16px; }
+.form-row { margin-bottom: 12px; }
+.form-row label { display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; }
+.form-row input, .form-row textarea, .form-row select {
+  width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--warm-bg); }
+.form-row textarea { resize: vertical; min-height: 60px; }
+.form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+
+/* Relationships */
+.rel-section { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
+.rel-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.rel-row select { flex: 1; }
+.rel-tag { display: inline-flex; align-items: center; gap: 6px; background: var(--warm-bg); border: 1px solid var(--border);
+  border-radius: 20px; padding: 4px 12px; font-size: 13px; margin: 3px; }
+.rel-tag button { background: none; border: none; color: var(--danger); font-size: 16px; padding: 0; line-height: 1; }
+
+/* Sphere View */
+.sphere-wrap { display: flex; gap: 16px; align-items: flex-start; }
+.sphere-sidebar { width: 200px; flex-shrink: 0; }
+.sphere-sidebar h4 { font-size: 13px; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+.sphere-list { max-height: 580px; overflow-y: auto; }
+.sphere-list-item { padding: 7px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; border: 1px solid transparent; margin-bottom: 3px; }
+.sphere-list-item:hover { background: #f5eed9; border-color: var(--border); }
+.sphere-list-item.active { background: var(--accent); color: white; }
+.sphere-svg-wrap { flex: 1; position: relative; }
+.sphere-container { position: relative; overflow: auto; border-radius: 8px; background: radial-gradient(ellipse at center, #fffdf5 0%, #f5edd8 100%);
+  border: 1px solid var(--border); height: 560px; }
+.sphere-hint { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+  font-size: 12px; color: var(--text-muted); background: rgba(255,253,249,0.85); padding: 4px 12px; border-radius: 20px; pointer-events: none; }
+
+/* Tree node */
+.tree-node { cursor: pointer; }
+.tree-node rect { transition: all 0.2s; }
+.tree-node:hover rect { filter: brightness(0.95); stroke: var(--accent); stroke-width: 2; }
+
+/* Story */
+.story-area { white-space: pre-wrap; line-height: 1.8; font-size: 15px; min-height: 200px; padding: 16px;
+  background: var(--warm-bg); border-radius: 8px; border: 1px solid var(--border); margin-top: 12px; }
+.api-key-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.api-key-row input { flex: 1; min-width: 200px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; }
+
+/* Save & Share */
+.share-section { margin-bottom: 20px; }
+.share-section h3 { color: var(--accent); margin-bottom: 8px; }
+.json-preview { background: var(--warm-bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px;
+  font-family: 'Consolas', monospace; font-size: 12px; max-height: 200px; overflow: auto; white-space: pre; margin-top: 8px; }
+
+.empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+.empty-state h3 { margin-bottom: 8px; }
+
+/* Login */
+.login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--warm-bg); }
+.login-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px; padding: 40px 44px;
+  max-width: 380px; width: 90%; box-shadow: 0 4px 24px rgba(0,0,0,0.08); text-align: center; }
+.login-card h1 { color: var(--accent); margin-bottom: 6px; font-size: 1.8em; }
+.login-card p  { color: var(--text-muted); font-style: italic; margin-bottom: 28px; font-size: 15px; }
+.login-card input { width: 100%; padding: 11px 14px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--warm-bg); font-size: 15px; text-align: center; letter-spacing: 2px; margin-bottom: 12px; }
+.login-card input:focus { outline: 2px solid var(--accent-light); }
+.login-error { color: var(--danger); font-size: 13px; margin-bottom: 8px; }
+
+/* Sync status */
+.sync-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; padding: 3px 10px;
+  border-radius: 20px; border: 1px solid transparent; }
+.sync-saved  { color: var(--success);   border-color: #c3dbbf; background: #f0f7ef; }
+.sync-saving { color: var(--accent);    border-color: var(--border); background: var(--warm-bg); }
+.sync-error  { color: var(--danger);    border-color: #f0c4bb; background: #fdf0ee; }
+.sync-offline{ color: var(--text-muted);border-color: var(--border); background: var(--warm-bg); }
+
+/* Tree node */
+.tree-node { cursor: pointer; }
+.tree-node rect { transition: all 0.2s; }
+.tree-node:hover rect { filter: brightness(0.95); stroke: var(--accent); stroke-width: 2; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+const STORAGE_KEY = 'familyTree_v1';
+const PW_KEY      = 'familyTree_pw';
+
+function generateId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+
+// LocalStorage cache (fallback / offline)
+function cacheLoad() {
+  try { const d = localStorage.getItem(STORAGE_KEY); return d ? JSON.parse(d) : null; }
+  catch { return null; }
+}
+function cacheSave(data) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch {}
+}
+
+// Password helpers — sessionStorage so it clears when the tab closes
+function getStoredPw() { return sessionStorage.getItem(PW_KEY) || ''; }
+function setStoredPw(pw) { if (pw) sessionStorage.setItem(PW_KEY, pw); else sessionStorage.removeItem(PW_KEY); }
+
+// Cloud API — always sends password header
+async function cloudLoad(pw) {
+  const res = await fetch('/api/tree', { headers: { 'x-password': pw } });
+  if (res.status === 401) throw Object.assign(new Error('Wrong password'), { code: 401 });
+  if (!res.ok) throw new Error('Server error');
+  return res.json();
+}
+
+let _saveTimer = null;
+function cloudSave(data, pw, onStatus) {
+  if (!pw) return; // no password = local-only mode
+  onStatus('saving');
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(async () => {
+    try {
+      const res = await fetch('/api/tree', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-password': pw },
+        body: JSON.stringify(data)
+      });
+      onStatus(res.ok ? 'saved' : 'error');
+    } catch { onStatus('error'); }
+  }, 1200);
+}
+
+// ── Login Screen ──────────────────────────────────────────────────────────────
+function Login({ onLogin }) {
+  const [pw, setPw]       = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!pw.trim()) return;
+    setLoading(true); setError('');
+    try {
+      const data = await cloudLoad(pw.trim());
+      cacheSave(data);
+      setStoredPw(pw.trim());
+      onLogin(pw.trim(), data);
+    } catch (err) {
+      setError(err.code === 401
+        ? 'Incorrect password — please try again.'
+        : 'Could not reach the server. Check your connection.');
+    }
+    setLoading(false);
+  }
+
+  return (
+    <div className="login-wrap">
+      <div className="login-card">
+        <h1>Our Family Tree</h1>
+        <p>Preserving our heritage, one generation at a time</p>
+        <form onSubmit={submit}>
+          <input type="password" placeholder="Family password" value={pw}
+            onChange={e => { setPw(e.target.value); setError(''); }}
+            autoFocus autoComplete="current-password" />
+          {error && <div className="login-error">{error}</div>}
+          <button className="btn btn-primary" style={{width:'100%',padding:'12px',marginTop:4}} disabled={loading}>
+            {loading ? 'Connecting…' : 'Enter Family Tree'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Sync badge ────────────────────────────────────────────────────────────────
+function SyncBadge({ status }) {
+  const map = {
+    saved:   { cls: 'sync-saved',   icon: '✓', text: 'Saved'     },
+    saving:  { cls: 'sync-saving',  icon: '↑', text: 'Saving…'   },
+    error:   { cls: 'sync-error',   icon: '!', text: 'Sync error' },
+    offline: { cls: 'sync-offline', icon: '○', text: 'Local only' },
+  };
+  const s = map[status] || map.offline;
+  return <span className={`sync-badge ${s.cls}`}>{s.icon} {s.text}</span>;
+}
+
+function PersonModal({ person, people, relationships, onSave, onDelete, onClose }) {
+  const isNew = !person.id;
+  const [form, setForm] = useState({
+    fullName: '', nickname: '', maidenName: '', birthYear: '', deathYear: '',
+    birthPlace: '', occupation: '', origin: '', notes: '', ...person
+  });
+  const [relType, setRelType] = useState('parent-of');
+  const [relTarget, setRelTarget] = useState('');
+  const [rels, setRels] = useState(() => {
+    if (isNew) return [];
+    return relationships.filter(r => r.from === person.id || r.to === person.id).map(r => ({
+      ...r,
+      displayType: r.from === person.id ? r.type : reverseRel(r.type),
+      otherId: r.from === person.id ? r.to : r.from
+    }));
+  });
+
+  function reverseRel(type) {
+    const map = { 'parent-of': 'child-of', 'child-of': 'parent-of', 'spouse-of': 'spouse-of', 'sibling-of': 'sibling-of' };
+    return map[type] || type;
+  }
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const usedIds = new Set(rels.map(r => r.otherId));
+  const others = people.filter(p => !usedIds.has(p.id));
+
+  function addRel() {
+    if (!relTarget) return;
+    const newRel = { id: generateId(), type: relType, from: form.id || '__new__', to: relTarget, displayType: relType, otherId: relTarget };
+    setRels([...rels, newRel]);
+    setRelTarget('');
+  }
+
+  function removeRel(relId) { setRels(rels.filter(r => r.id !== relId)); }
+
+  function handleSave() {
+    if (!form.fullName.trim()) return;
+    const id = form.id || generateId();
+    const savedPerson = { ...form, id };
+    const savedRels = rels.map(r => ({
+      id: r.id,
+      type: r.displayType === 'child-of' ? 'parent-of' : r.displayType === 'parent-of' ? 'parent-of' : r.displayType,
+      from: r.displayType === 'child-of' ? r.otherId : id,
+      to: r.displayType === 'child-of' ? id : r.otherId
+    }));
+    // normalize spouse/sibling so from < to for consistency
+    savedRels.forEach(r => {
+      if ((r.type === 'spouse-of' || r.type === 'sibling-of') && r.from > r.to) {
+        [r.from, r.to] = [r.to, r.from];
+      }
+    });
+    onSave(savedPerson, savedRels);
+  }
+
+  function getName(id) { const p = people.find(p => p.id === id); return p ? p.fullName : '?'; }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <h2>{isNew ? 'Add Family Member' : 'Edit Family Member'}</h2>
+        <div className="form-row">
+          <label>Full Name *</label>
+          <input value={form.fullName} onChange={e => set('fullName', e.target.value)} autoFocus />
+        </div>
+        <div className="form-grid">
+          <div className="form-row"><label>Nickname</label><input value={form.nickname} onChange={e => set('nickname', e.target.value)} /></div>
+          <div className="form-row"><label>Maiden Name</label><input value={form.maidenName} onChange={e => set('maidenName', e.target.value)} /></div>
+          <div className="form-row"><label>Birth Year</label><input value={form.birthYear} onChange={e => set('birthYear', e.target.value)} placeholder="e.g. 1952" /></div>
+          <div className="form-row"><label>Death Year</label><input value={form.deathYear} onChange={e => set('deathYear', e.target.value)} placeholder="Leave blank if living" /></div>
+          <div className="form-row"><label>Birth Place</label><input value={form.birthPlace} onChange={e => set('birthPlace', e.target.value)} /></div>
+          <div className="form-row"><label>Occupation</label><input value={form.occupation} onChange={e => set('occupation', e.target.value)} /></div>
+        </div>
+        <div className="form-row"><label>Origin / Nationality</label><input value={form.origin} onChange={e => set('origin', e.target.value)} /></div>
+        <div className="form-row"><label>Biographical Notes</label><textarea value={form.notes} onChange={e => set('notes', e.target.value)} /></div>
+
+        <div className="rel-section">
+          <label style={{fontWeight:600,fontSize:13,color:'var(--text-muted)'}}>Family Relationships</label>
+          {rels.length > 0 && (
+            <div style={{margin:'8px 0',flexWrap:'wrap',display:'flex'}}>
+              {rels.map(r => (
+                <span key={r.id} className="rel-tag">
+                  {r.displayType} {getName(r.otherId)}
+                  <button onClick={() => removeRel(r.id)}>&times;</button>
+                </span>
+              ))}
+            </div>
+          )}
+          {others.length > 0 ? (
+            <div className="rel-row">
+              <select value={relType} onChange={e => setRelType(e.target.value)}>
+                <option value="parent-of">Parent of</option>
+                <option value="child-of">Child of</option>
+                <option value="spouse-of">Spouse of</option>
+                <option value="sibling-of">Sibling of</option>
+              </select>
+              <select value={relTarget} onChange={e => setRelTarget(e.target.value)}>
+                <option value="">Select person...</option>
+                {others.map(p => <option key={p.id} value={p.id}>{p.fullName}</option>)}
+              </select>
+              <button className="btn btn-secondary" onClick={addRel}>Add</button>
+            </div>
+          ) : (
+            <p style={{fontSize:13,color:'var(--text-muted)',marginTop:8}}>
+              {people.length === 0 ? 'Add other family members first to create relationships.' : 'All family members are connected.'}
+            </p>
+          )}
+        </div>
+
+        <div className="form-actions">
+          {!isNew && <button className="btn btn-danger" onClick={() => { if (confirm('Delete this person?')) onDelete(person.id); }}>Delete</button>}
+          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleSave}>{isNew ? 'Add Person' : 'Save Changes'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const SUFFIXES = new Set(['jr','jr.','sr','sr.','ii','iii','iv','v','vi','esq','esq.','phd','md']);
+
+function displayName(p) {
+  // "Nickname LastName" if nickname exists, otherwise full name
+  // LastName = last word that isn't a suffix
+  if (p.nickname) {
+    const parts = p.fullName.trim().split(/\s+/);
+    const lastName = [...parts].reverse().find(w => !SUFFIXES.has(w.toLowerCase())) || '';
+    return lastName ? `${p.nickname} ${lastName}` : p.nickname;
+  }
+  return p.fullName;
+}
+
+function PeopleTab({ people, relationships, onEdit, onAdd }) {
+  const getRelationsFor = (personId) => {
+    const rels = relationships.filter(r => r.from === personId || r.to === personId).map(r => {
+      const otherId = r.from === personId ? r.to : r.from;
+      const type = r.from === personId ? r.type : (r.type === 'parent-of' ? 'child-of' : r.type === 'child-of' ? 'parent-of' : r.type);
+      const other = people.find(p => p.id === otherId);
+      return { type, name: displayName(other) || '?' };
+    });
+    return rels;
+  };
+
+  // Sort alphabetically by display name
+  const sorted = [...people].sort((a, b) => displayName(a).localeCompare(displayName(b)));
+
+  if (people.length === 0) return (
+    <div className="empty-state">
+      <h3>No family members yet</h3>
+      <p>Click "Add Person" to start building your family tree.</p>
+      <button className="btn btn-primary" style={{marginTop:12}} onClick={onAdd}>Add Person</button>
+    </div>
+  );
+  return (
+    <div>
+      <div className="people-toolbar">
+        <span style={{color:'var(--text-muted)'}}>{people.length} family member{people.length !== 1 ? 's' : ''}</span>
+        <button className="btn btn-primary" onClick={onAdd}>+ Add Person</button>
+      </div>
+      <div className="people-grid">
+        {sorted.map(p => {
+          const rels = getRelationsFor(p.id);
+          return (
+          <div key={p.id} className="person-card" onClick={() => onEdit(p)}>
+            <h3>{displayName(p)}</h3>
+            {p.nickname && <div className="detail" style={{fontStyle:'italic',color:'var(--text-muted)'}}>({p.fullName})</div>}
+            {p.maidenName && <div className="maiden">née {p.maidenName}</div>}
+            {(p.birthYear || p.deathYear) && <div className="detail">{p.birthYear || '?'} – {p.deathYear || 'present'}</div>}
+            {p.birthPlace && <div className="detail">{p.birthPlace}</div>}
+            {p.occupation && <div className="detail">{p.occupation}</div>}
+            {rels.length > 0 && (
+              <div style={{marginTop:8,paddingTop:8,borderTop:'1px solid var(--border)',fontSize:'12px',color:'var(--accent)'}}>
+                {rels.slice(0,3).map((r,i) => <div key={i}>{r.type.replace('-',' ')} {r.name}</div>)}
+                {rels.length > 3 && <div style={{color:'var(--text-muted)'}}>+{rels.length - 3} more</div>}
+              </div>
+            )}
+          </div>
+        );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Sphere / Hub View ────────────────────────────────────────────────────────
+
+const REL_COLORS = { 'parent-of': '#8b6914', 'child-of': '#8b6914', 'spouse-of': '#b5442e', 'sibling-of': '#4a7c3f' };
+const REL_DASH   = { 'parent-of': '0', 'child-of': '0', 'spouse-of': '7,4', 'sibling-of': '4,4' };
+const REL_LABEL  = { 'parent-of': 'parent of', 'child-of': 'child of', 'spouse-of': 'spouse', 'sibling-of': 'sibling' };
+
+function getConnected(personId, relationships) {
+  // Returns [{otherId, type (from this person's perspective), relId}]
+  const result = [];
+  relationships.forEach(r => {
+    if (r.from === personId) result.push({ otherId: r.to,   type: r.type,                    relId: r.id });
+    else if (r.to === personId) {
+      const flip = { 'parent-of':'child-of','child-of':'parent-of','spouse-of':'spouse-of','sibling-of':'sibling-of' };
+      result.push({ otherId: r.from, type: flip[r.type] || r.type, relId: r.id });
+    }
+  });
+  return result;
+}
+
+function SphereNode({ x, y, person, isCenter, isFocused, onClick, useNick = false }) {
+  const NW = 140, NH = 62;
+  function trunc(s, n) { return s && s.length > n ? s.slice(0, n) + '…' : (s || ''); }
+  const fill   = isCenter  ? '#8b6914' : isFocused ? '#f5edd8' : '#fffdf9';
+  const stroke = isCenter  ? '#6d5310' : isFocused ? '#c9a84c' : '#e0d5c4';
+  const sWidth = isCenter || isFocused ? 2.5 : 1.5;
+  const nameColor  = isCenter ? '#fff'     : '#8b6914';
+  const subColor   = isCenter ? '#f5dfa0'  : '#7a6e5a';
+  const placeColor = isCenter ? '#e8cc80'  : '#aaa';
+  const label = useNick ? displayName(person) : person.fullName;
+  return (
+    <g className="tree-node" onClick={onClick} transform={`translate(${x - NW/2},${y - NH/2})`} style={{cursor:'pointer'}}>
+      <rect width={NW} height={NH} rx={9} fill={fill} stroke={stroke} strokeWidth={sWidth}
+        style={{filter: isFocused && !isCenter ? 'drop-shadow(0 2px 6px rgba(139,105,20,0.18))' : 'none'}} />
+      <text x={NW/2} y={18} textAnchor="middle" fontFamily="Georgia" fontSize={isCenter?13:12} fontWeight="bold" fill={nameColor}>
+        {trunc(label, 19)}
+      </text>
+      {person.maidenName && <text x={NW/2} y={30} textAnchor="middle" fontFamily="Georgia" fontSize={9} fontStyle="italic" fill={subColor}>née {trunc(person.maidenName,17)}</text>}
+      <text x={NW/2} y={person.maidenName ? 42 : 33} textAnchor="middle" fontFamily="sans-serif" fontSize={9} fill={subColor}>
+        {person.birthYear||'?'} – {person.deathYear||'present'}
+      </text>
+      {person.birthPlace && <text x={NW/2} y={person.maidenName ? 54 : 46} textAnchor="middle" fontFamily="sans-serif" fontSize={8} fill={placeColor}>{trunc(person.birthPlace,22)}</text>}
+    </g>
+  );
+}
+
+function TreeView({ people, relationships, onEdit, onAdd }) {
+  const personMap = useMemo(() => { const m={}; people.forEach(p => m[p.id]=p); return m; }, [people]);
+  const [centerId, setCenterId] = useState(() => people[0]?.id || null);
+  const [history, setHistory] = useState([]);
+  const [useNick, setUseNick] = useState(true);
+
+  // Sync centerId if people list changes (e.g. after import)
+  useEffect(() => {
+    if (centerId && !personMap[centerId] && people.length > 0) setCenterId(people[0].id);
+    if (!centerId && people.length > 0) setCenterId(people[0].id);
+  }, [people]);
+
+  const center = centerId ? personMap[centerId] : null;
+  const connected = useMemo(() => centerId ? getConnected(centerId, relationships) : [], [centerId, relationships]);
+
+  // ── Org-chart layout ────────────────────────────────────────────────────────
+  const NW = 140, NH = 62, HGAP = 20, VGAP = 150;
+
+  // Group connected by type
+  const byType = {};
+  connected.forEach(c => { (byType[c.type] = byType[c.type] || []).push(c); });
+
+  const children = byType['parent-of'] || [];   // center is parent → below
+  const parents  = byType['child-of']  || [];   // center is child  → above
+  const spouses  = byType['spouse-of'] || [];   // right
+  const siblings = byType['sibling-of']|| [];   // left
+
+  // How wide a horizontal row of n nodes is
+  const hRowPx = (n) => n > 0 ? n * NW + (n - 1) * HGAP : 0;
+
+  // Canvas: wide enough for the largest horizontal row + side columns
+  const maxHorizN  = Math.max(children.length, parents.length, 1);
+  const hasSides   = spouses.length > 0 || siblings.length > 0;
+  const W = Math.max(760, maxHorizN * (NW + HGAP) + (hasSides ? (NW + 100) * 2 : 120));
+  const H = 540;
+  const CX = W / 2, CY = H / 2;
+
+  // Side column x-coords: just outside the widest horizontal row
+  const halfMaxRow = Math.max(hRowPx(children.length), hRowPx(parents.length), NW) / 2;
+  const spouseCX = CX + halfMaxRow + NW / 2 + 55;
+  const sibCX    = CX - halfMaxRow - NW / 2 - 55;
+
+  const nodePositions = []; // { x, y, conn, zone }
+
+  // Children — horizontal row below
+  {
+    const totalW = hRowPx(children.length);
+    const x0 = CX - totalW / 2 + NW / 2;
+    children.forEach((conn, i) =>
+      nodePositions.push({ x: x0 + i * (NW + HGAP), y: CY + VGAP, conn, zone: 'below' }));
+  }
+
+  // Parents — horizontal row above
+  {
+    const totalW = hRowPx(parents.length);
+    const x0 = CX - totalW / 2 + NW / 2;
+    parents.forEach((conn, i) =>
+      nodePositions.push({ x: x0 + i * (NW + HGAP), y: CY - VGAP, conn, zone: 'above' }));
+  }
+
+  // Spouses — stacked vertically to the right
+  spouses.forEach((conn, i) => {
+    const dy = (i - (spouses.length - 1) / 2) * (NH + 18);
+    nodePositions.push({ x: spouseCX, y: CY + dy, conn, zone: 'right' });
+  });
+
+  // Siblings — stacked vertically to the left
+  siblings.forEach((conn, i) => {
+    const dy = (i - (siblings.length - 1) / 2) * (NH + 18);
+    nodePositions.push({ x: sibCX, y: CY + dy, conn, zone: 'left' });
+  });
+
+  function navigateTo(id) {
+    setHistory(h => [...h, centerId]);
+    setCenterId(id);
+  }
+  function goBack() {
+    setHistory(h => { const prev = [...h]; const last = prev.pop(); setCenterId(last); return prev; });
+  }
+
+  if (people.length === 0) return (
+    <div className="empty-state"><h3>Add family members first</h3><p>Go to the People tab to add members, then view the tree here.</p></div>
+  );
+  if (!center) return null;
+
+  return (
+    <div className="sphere-wrap">
+      {/* Sidebar: full person list */}
+      <div className="sphere-sidebar">
+        <h4>All Members</h4>
+        <div className="sphere-list">
+          {[...people].sort((a,b) => a.fullName.localeCompare(b.fullName)).map(p => (
+            <div key={p.id} className={`sphere-list-item ${p.id === centerId ? 'active' : ''}`}
+              onClick={() => navigateTo(p.id)}>
+              {p.fullName}
+              {p.birthYear ? <span style={{fontSize:11,opacity:0.7}}> · {p.birthYear}</span> : null}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Main sphere canvas */}
+      <div className="sphere-svg-wrap">
+        {/* Toolbar */}
+        <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:8,flexWrap:'wrap'}}>
+          {history.length > 0 && (
+            <button className="btn btn-secondary" style={{padding:'5px 12px',fontSize:13}} onClick={goBack}>
+              ← Back
+            </button>
+          )}
+          <span style={{fontSize:13,color:'var(--text-muted)'}}>
+            Viewing: <strong style={{color:'var(--accent)'}}>{center.fullName}</strong>
+            {connected.length > 0 ? ` · ${connected.length} connection${connected.length>1?'s':''}` : ' · no connections yet'}
+          </span>
+          <div style={{marginLeft:'auto',display:'flex',gap:6}}>
+            <button className="btn btn-primary" style={{padding:'5px 12px',fontSize:13}}
+              onClick={onAdd}>+ Add Person</button>
+            <button className="btn btn-secondary" style={{padding:'5px 12px',fontSize:13}}
+              onClick={() => onEdit(center)}>Edit this person</button>
+            <button className="btn btn-secondary" style={{padding:'5px 12px',fontSize:13}}
+              onClick={() => setUseNick(n => !n)}
+              title="Toggle between nickname and full name">
+              {useNick ? 'Full Names' : 'Nicknames'}
+            </button>
+          </div>
+        </div>
+
+        <div className="sphere-container">
+          <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{display:'block'}}>
+
+            {/* Connection lines — org-chart elbow style */}
+            {nodePositions.map(({ x, y, conn, zone }, i) => {
+              const color = REL_COLORS[conn.type] || '#8b6914';
+              const dash  = REL_DASH[conn.type]  || '0';
+              let d = '';
+              let labelX = 0, labelY = 0;
+
+              if (zone === 'below') {
+                // Center bottom → down to midY bus → across → down to child top
+                const fromY = CY + NH / 2;
+                const toY   = y   - NH / 2;
+                const busY  = fromY + (toY - fromY) * 0.5;
+                d = `M${CX},${fromY} L${CX},${busY} L${x},${busY} L${x},${toY}`;
+                labelX = x === CX ? CX + 8 : (CX + x) / 2;
+                labelY = busY - 6;
+              } else if (zone === 'above') {
+                // Center top → up to midY bus → across → up to parent bottom
+                const fromY = CY - NH / 2;
+                const toY   = y   + NH / 2;
+                const busY  = fromY + (toY - fromY) * 0.5;
+                d = `M${CX},${fromY} L${CX},${busY} L${x},${busY} L${x},${toY}`;
+                labelX = x === CX ? CX + 8 : (CX + x) / 2;
+                labelY = busY - 6;
+              } else if (zone === 'right') {
+                // Center right edge → horizontal mid → elbow down/up → node left edge
+                const fromX = CX + NW / 2, toX = x - NW / 2;
+                const midX  = fromX + (toX - fromX) * 0.5;
+                d = y === CY
+                  ? `M${fromX},${CY} L${toX},${CY}`
+                  : `M${fromX},${CY} L${midX},${CY} L${midX},${y} L${toX},${y}`;
+                labelX = midX; labelY = Math.min(CY, y) - 6;
+              } else {
+                // Center left edge → horizontal mid → elbow → node right edge
+                const fromX = CX - NW / 2, toX = x + NW / 2;
+                const midX  = fromX + (toX - fromX) * 0.5;
+                d = y === CY
+                  ? `M${fromX},${CY} L${toX},${CY}`
+                  : `M${fromX},${CY} L${midX},${CY} L${midX},${y} L${toX},${y}`;
+                labelX = midX; labelY = Math.min(CY, y) - 6;
+              }
+
+              return (
+                <g key={conn.relId || i}>
+                  <path d={d} fill="none" stroke={color} strokeWidth="1.8"
+                    strokeDasharray={dash} opacity="0.6" strokeLinejoin="round" />
+                  <text x={labelX} y={labelY} textAnchor="middle"
+                    fontFamily="sans-serif" fontSize="9" fill={color} opacity="0.85">
+                    {REL_LABEL[conn.type]}
+                  </text>
+                </g>
+              );
+            })}
+
+            {/* Center node */}
+            <SphereNode x={CX} y={CY} person={center} isCenter={true}
+              onClick={() => onEdit(center)} useNick={useNick} />
+
+            {/* Connected nodes */}
+            {nodePositions.map(({ x, y, conn }, i) => {
+              const p = personMap[conn.otherId];
+              if (!p) return null;
+              return (
+                <SphereNode key={conn.relId || i} x={x} y={y} person={p} isCenter={false} isFocused={true}
+                  onClick={() => navigateTo(p.id)} useNick={useNick} />
+              );
+            })}
+          </svg>
+
+          <div className="sphere-hint">Click any person to make them the focus · Sidebar to jump to anyone</div>
+        </div>
+
+        {/* Legend */}
+        <div style={{marginTop:8,display:'flex',gap:16,justifyContent:'center',fontSize:12,color:'var(--text-muted)',flexWrap:'wrap'}}>
+          <span><span style={{display:'inline-block',width:18,height:2,background:'#8b6914',verticalAlign:'middle',marginRight:4}}></span>Parent / Child</span>
+          <span><span style={{display:'inline-block',width:18,height:0,borderTop:'2px dashed #b5442e',verticalAlign:'middle',marginRight:4}}></span>Spouse</span>
+          <span><span style={{display:'inline-block',width:18,height:0,borderTop:'2px dashed #4a7c3f',verticalAlign:'middle',marginRight:4}}></span>Sibling</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StoryTab({ people, relationships }) {
+  const [apiKey, setApiKey]           = useState(() => localStorage.getItem('ft_apikey') || '');
+  const [story, setStory]             = useState(() => localStorage.getItem('ft_story') || '');
+  const [customPrompt, setCustomPrompt] = useState(() => localStorage.getItem('ft_customprompt') || '');
+  const [loading, setLoading]         = useState(false);
+  const [error, setError]             = useState('');
+  const [copied, setCopied]           = useState(false);
+
+  useEffect(() => { localStorage.setItem('ft_apikey', apiKey); }, [apiKey]);
+  useEffect(() => { localStorage.setItem('ft_story', story); }, [story]);
+  useEffect(() => { localStorage.setItem('ft_customprompt', customPrompt); }, [customPrompt]);
+
+  function buildFamilyData() {
+    const pList = people.map(p => {
+      let s = p.fullName;
+      if (p.maidenName) s += ` (née ${p.maidenName})`;
+      if (p.birthYear) s += `, b.${p.birthYear}`;
+      if (p.deathYear) s += `, d.${p.deathYear}`;
+      if (p.birthPlace) s += `, from ${p.birthPlace}`;
+      if (p.occupation) s += `, ${p.occupation}`;
+      if (p.origin) s += ` (${p.origin})`;
+      if (p.notes) s += `. ${p.notes}`;
+      return s;
+    }).join('\n');
+    const pmap = {}; people.forEach(p => pmap[p.id] = p.fullName);
+    const rList = relationships.map(r =>
+      `${pmap[r.from]||'?'} is ${r.type.replace('-',' ')} ${pmap[r.to]||'?'}`
+    ).join('\n');
+    return { pList, rList };
+  }
+
+  function buildPrompt() {
+    const { pList, rList } = buildFamilyData();
+    const base = `Write a 500-word narrative family history in warm prose based on these family members and relationships. Write it as "Our Family Story" — engaging, heartfelt, connecting the generations. Do not use bullet points or lists.`;
+    const extra = customPrompt.trim()
+      ? `\n\nAdditional instructions: ${customPrompt.trim()}`
+      : '';
+    return `${base}${extra}\n\nFamily Members:\n${pList}\n\nRelationships:\n${rList}`;
+  }
+
+  async function generate() {
+    if (!apiKey) { setError('Please enter your API key'); return; }
+    if (people.length === 0) { setError('Add family members first'); return; }
+    setLoading(true); setError('');
+    try {
+      const res = await fetch('/api/story', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey, prompt: buildPrompt() })
+      });
+      const data = await res.json();
+      if (data.error) setError(data.error); else setStory(data.story);
+    } catch (e) { setError('Failed to connect to server'); }
+    setLoading(false);
+  }
+
+  function copyStory() {
+    navigator.clipboard.writeText(story);
+    setCopied(true); setTimeout(() => setCopied(false), 2000);
+  }
+
+  const PROMPT_EXAMPLES = [
+    'Focus on the immigrant experience and what drove the family to move.',
+    'Write it as if being read aloud at a family reunion.',
+    'Emphasize the women in the family and their contributions.',
+    'Use a poetic, lyrical tone with vivid imagery.',
+    'Focus on the trades and occupations passed down through generations.',
+  ];
+
+  return (
+    <div>
+      <h3 style={{color:'var(--accent)',marginBottom:6}}>Our Family Story</h3>
+      <p style={{color:'var(--text-muted)',fontSize:13,marginBottom:14}}>
+        AI generates a narrative family history from your data. Uses Claude Haiku — ~$0.001 per story.
+      </p>
+
+      {/* API Key */}
+      <div style={{marginBottom:12}}>
+        <label style={{display:'block',fontSize:13,fontWeight:600,color:'var(--text-muted)',marginBottom:4}}>
+          Anthropic API Key
+          <span style={{fontWeight:400,fontStyle:'italic',marginLeft:6}}>
+            (leave blank if ANTHROPIC_API_KEY is set in Vercel env vars)
+          </span>
+        </label>
+        <input type="password" placeholder="sk-ant-... or leave blank if configured on server" value={apiKey} onChange={e => setApiKey(e.target.value)}
+          style={{width:'100%',padding:'8px 12px',border:'1px solid var(--border)',borderRadius:6,background:'var(--warm-bg)'}} />
+      </div>
+
+      {/* Custom prompt */}
+      <div style={{marginBottom:12}}>
+        <label style={{display:'block',fontSize:13,fontWeight:600,color:'var(--text-muted)',marginBottom:4}}>
+          Story Style / Custom Instructions <span style={{fontWeight:400,fontStyle:'italic'}}>(optional)</span>
+        </label>
+        <textarea
+          placeholder="e.g. Write it as if being read at a family reunion. Focus on the immigrant experience. Use a poetic tone..."
+          value={customPrompt} onChange={e => setCustomPrompt(e.target.value)}
+          style={{width:'100%',minHeight:72,padding:'8px 12px',border:'1px solid var(--border)',borderRadius:6,
+            background:'var(--warm-bg)',resize:'vertical',fontSize:13,fontFamily:'inherit'}} />
+        <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:6}}>
+          {PROMPT_EXAMPLES.map((ex, i) => (
+            <button key={i} onClick={() => setCustomPrompt(ex)}
+              style={{fontSize:11,padding:'3px 9px',border:'1px solid var(--border)',borderRadius:20,
+                background:'var(--warm-bg)',cursor:'pointer',color:'var(--text-muted)'}}>
+              {ex.slice(0, 38)}…
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:8}}>
+        <button className="btn btn-primary" onClick={generate} disabled={loading}>
+          {loading ? 'Generating…' : story ? '↺ Regenerate Story' : '✦ Generate Our Story'}
+        </button>
+        {story && (
+          <button className="btn btn-secondary" onClick={copyStory}>
+            {copied ? '✓ Copied!' : 'Copy Story'}
+          </button>
+        )}
+        {story && (
+          <button className="btn btn-secondary" onClick={() => setStory('')}
+            style={{marginLeft:'auto',fontSize:12,padding:'5px 10px'}}>Clear</button>
+        )}
+      </div>
+
+      {error && <p style={{color:'var(--danger)',marginBottom:8,fontSize:14}}>{error}</p>}
+
+      {story
+        ? <div className="story-area">{story}</div>
+        : <div className="story-area" style={{color:'var(--text-muted)',textAlign:'center',paddingTop:60,fontStyle:'italic'}}>
+            Your family story will appear here…
+          </div>
+      }
+    </div>
+  );
+}
+
+function ShareTab({ data, onImport }) {
+  const [importText, setImportText] = useState('');
+  const [msg, setMsg] = useState('');
+
+  function exportJson() {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'family-tree.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function copyJson() {
+    navigator.clipboard.writeText(JSON.stringify(data, null, 2));
+    setMsg('Copied to clipboard!');
+    setTimeout(() => setMsg(''), 2000);
+  }
+
+  function handleImportFile(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const d = JSON.parse(ev.target.result);
+        if (d.people && d.relationships) { onImport(d); setMsg('Imported successfully!'); }
+        else setMsg('Invalid file format');
+      } catch { setMsg('Invalid JSON file'); }
+    };
+    reader.readAsText(file);
+  }
+
+  function handleImportText() {
+    try {
+      const d = JSON.parse(importText);
+      if (d.people && d.relationships) { onImport(d); setMsg('Imported successfully!'); setImportText(''); }
+      else setMsg('Invalid format — needs "people" and "relationships"');
+    } catch { setMsg('Invalid JSON'); }
+  }
+
+  return (
+    <div>
+      <div className="share-section">
+        <h3>Export</h3>
+        <p style={{color:'var(--text-muted)',fontSize:14,marginBottom:8}}>Download or copy your family tree data to share with family.</p>
+        <div style={{display:'flex',gap:8}}>
+          <button className="btn btn-primary" onClick={exportJson}>Download JSON</button>
+          <button className="btn btn-secondary" onClick={copyJson}>Copy to Clipboard</button>
+        </div>
+        {data.people.length > 0 && <div className="json-preview">{JSON.stringify(data, null, 2).slice(0, 500)}...</div>}
+      </div>
+      <div className="share-section">
+        <h3>Import</h3>
+        <p style={{color:'var(--text-muted)',fontSize:14,marginBottom:8}}>Load a family tree from a JSON file or paste JSON below.</p>
+        <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:8}}>
+          <input type="file" accept=".json" onChange={handleImportFile} />
+        </div>
+        <textarea placeholder="Or paste JSON here..." value={importText} onChange={e => setImportText(e.target.value)}
+          style={{width:'100%',minHeight:80,padding:8,borderRadius:6,border:'1px solid var(--border)',fontFamily:'Consolas',fontSize:12,marginBottom:8}} />
+        <button className="btn btn-secondary" onClick={handleImportText} disabled={!importText}>Import from Text</button>
+      </div>
+      {msg && <p style={{color:'var(--success)',marginTop:8,fontWeight:600}}>{msg}</p>}
+    </div>
+  );
+}
+
+function App() {
+  const [password, setPassword] = useState(getStoredPw);
+  const [authed,   setAuthed]   = useState(false);
+  const [data, setDataRaw]      = useState(() => cacheLoad() || { people: [], relationships: [] });
+  const [syncStatus, setSyncStatus] = useState('offline');
+  const [tab, setTab]     = useState('people');
+  const [editing, setEditing] = useState(null);
+
+  // On mount: if password is already cached, verify it and load cloud data
+  useEffect(() => {
+    if (!password) return; // no password cached — show login
+    cloudLoad(password)
+      .then(d => {
+        // Use cloud data if it has content, otherwise keep localStorage data
+        if (d && (d.people?.length > 0 || d.relationships?.length > 0)) {
+          setDataRaw(d); cacheSave(d);
+        }
+        setAuthed(true);
+        setSyncStatus('saved');
+      })
+      .catch(err => {
+        if (err.code === 401) {
+          // Password no longer valid — force re-login
+          setStoredPw('');
+          setPassword('');
+        } else {
+          // Network error — let them in with cached data
+          setAuthed(true);
+          setSyncStatus('offline');
+        }
+      });
+  }, []);
+
+  function handleLogin(pw, cloudData) {
+    setPassword(pw);
+    setDataRaw(cloudData);
+    cacheSave(cloudData);
+    setAuthed(true);
+    setSyncStatus('saved');
+  }
+
+  function signOut() {
+    setStoredPw('');
+    setPassword('');
+    setAuthed(false);
+  }
+
+  function setData(updater) {
+    setDataRaw(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      cacheSave(next);
+      cloudSave(next, password, setSyncStatus);
+      return next;
+    });
+  }
+
+  function savePerson(person, rels) {
+    setData(d => {
+      const people = d.people.filter(p => p.id !== person.id).concat(person);
+      const otherRels = d.relationships.filter(r => r.from !== person.id && r.to !== person.id);
+      return { people, relationships: [...otherRels, ...rels] };
+    });
+    setEditing(null);
+  }
+
+  function deletePerson(id) {
+    setData(d => ({
+      people: d.people.filter(p => p.id !== id),
+      relationships: d.relationships.filter(r => r.from !== id && r.to !== id)
+    }));
+    setEditing(null);
+  }
+
+  // Show login if we have a password env var in use (401 would have cleared it)
+  // but not yet authenticated this session
+  if (!authed) return <Login onLogin={handleLogin} />;
+
+  return (
+    <div className="app">
+      <div className="header">
+        <h1>Our Family Tree</h1>
+        <p>Preserving our heritage, one generation at a time</p>
+      </div>
+      <div className="tabs">
+        {[['people','People'],['tree','Tree View'],['story','Our Story'],['share','Save & Share']].map(([k,l]) =>
+          <button key={k} className={`tab ${tab===k?'active':''}`} onClick={() => setTab(k)}>{l}</button>
+        )}
+        <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:6,paddingBottom:2,flexWrap:'wrap'}}>
+          <SyncBadge status={syncStatus} />
+          <button className="btn btn-secondary" style={{padding:'4px 10px',fontSize:12}}
+            onClick={signOut} title="Sign out">Sign out</button>
+        </div>
+      </div>
+      <div className="panel">
+        {tab === 'people' && <PeopleTab people={data.people} relationships={data.relationships}
+          onEdit={p => setEditing(p)} onAdd={() => setEditing({})} />}
+        {tab === 'tree' && <TreeView people={data.people} relationships={data.relationships}
+          onEdit={p => setEditing(p)} onAdd={() => setEditing({})} />}
+        {tab === 'story' && <StoryTab people={data.people} relationships={data.relationships} />}
+        {tab === 'share' && <ShareTab data={data} onImport={d => setData(d)} />}
+      </div>
+      {editing && <PersonModal person={editing} people={data.people} relationships={data.relationships}
+        onSave={savePerson} onDelete={deletePerson} onClose={() => setEditing(null)} />}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
