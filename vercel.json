@@ -1,11 +1,8 @@
 {
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
-  ],
-  "headers": [
-    {
-      "source": "/api/(.*)",
-      "headers": [{ "key": "Cache-Control", "value": "no-store" }]
-    }
+  "outputDirectory": "public",
+  "routes": [
+    { "src": "/api/tree", "dest": "/api/tree.js" },
+    { "src": "/api/story", "dest": "/api/story.js" },
+    { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
