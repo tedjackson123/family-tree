@@ -840,7 +840,16 @@ function ConnectionFinder({ people, relationships, apiKey, password }) {
     const pathText = pathToText(result);
     const nameA = displayName(personMap[personA]);
     const nameB = displayName(personMap[personB]);
-    const prompt = `Given this family relationship path: "${pathText}", describe in one or two plain English sentences how ${nameA} and ${nameB} are related. Be specific and natural, like "They are second cousins — their grandmothers are sisters." Only give the relationship description, nothing else.`;
+    const prompt = `Given this family relationship path: "${pathText}", describe in one or two plain English sentences how ${nameA} and ${nameB} are related.
+
+Use standard cousin terminology:
+- Siblings share the same parents.
+- First cousins share grandparents (their parents are siblings).
+- Second cousins share great-grandparents (their grandparents are siblings).
+- Third cousins share great-great-grandparents (their great-grandparents are siblings).
+- "Once removed" means one generation apart from a cousin relationship.
+
+Count the generations carefully from the path above. Be specific and natural, like "They are second cousins — their grandmothers are sisters." Only give the relationship description, nothing else.`;
     try {
       const res = await fetch('/api/story', {
         method: 'POST',
