@@ -1191,22 +1191,62 @@ function App() {
     });
   }
 
+  // Immediate save (no debounce) + reload from cloud to confirm UI is up to date
+  async function saveAndRefresh(next) {
+    cacheSave(next);
+    setSyncStatus('saving');
+    try {
+      const res = await fetch('/api/tree', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-password': password },
+        body: JSON.stringify(next)
+      });
+      if (res.ok) {
+        const fresh = await cloudLoad(password);
+        setDataRaw(fresh);
+        cacheSave(fresh);
+        setSyncStatus('saved');
+      } else {
+        setSyncStatus('error');
+      }
+    } catch {
+      setSyncStatus('error');
+    }
+  }
+
   function savePerson(person, rels) {
-    setData(d => {
-      const people = d.people.filter(p => p.id !== person.id).concat(person);
-      const otherRels = d.relationships.filter(r => r.from !== person.id && r.to !== person.id);
+    const next = (() => {
+      const people = data.people.filter(p => p.id !== person.id).concat(person);
+      const otherRels = data.relationships.filter(r => r.from !== person.id && r.to !== person.id);
       return { people, relationships: [...otherRels, ...rels] };
-    });
+    })();
+    setDataRaw(next);
     setEditing(null);
+    saveAndRefresh(next);
   }
 
   function deletePerson(id) {
-    setData(d => ({
-      people: d.people.filter(p => p.id !== id),
-      relationships: d.relationships.filter(r => r.from !== id && r.to !== id)
-    }));
+    const next = {
+      people: data.people.filter(p => p.id !== id),
+      relationships: data.relationships.filter(r => r.from !== id && r.to !== id)
+    };
+    setDataRaw(next);
     setEditing(null);
+    saveAndRefresh(next);
   }
+
+  // Poll every 30 seconds so multiple family members stay in sync
+  useEffect(() => {
+    if (!authed || !password) return;
+    const interval = setInterval(() => {
+      cloudLoad(password).then(d => {
+        if (d && (d.people?.length > 0 || d.relationships?.length > 0)) {
+          setDataRaw(d); cacheSave(d);
+        }
+      }).catch(() => {});
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [authed, password]);
 
   // Show login if we have a password env var in use (401 would have cleared it)
   // but not yet authenticated this session
