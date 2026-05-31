@@ -803,7 +803,7 @@ function findConnection(aId, bId, people, relationships) {
   return null;
 }
 
-function ConnectionFinder({ people, relationships, apiKey }) {
+function ConnectionFinder({ people, relationships, apiKey, password }) {
   const [personA, setPersonA] = useState('');
   const [personB, setPersonB] = useState('');
   const [result, setResult]   = useState(null);
@@ -844,7 +844,7 @@ function ConnectionFinder({ people, relationships, apiKey }) {
     try {
       const res = await fetch('/api/story', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-password': password || '' },
         body: JSON.stringify({ apiKey, prompt })
       });
       const data = await res.json();
@@ -921,7 +921,7 @@ function ConnectionFinder({ people, relationships, apiKey }) {
   );
 }
 
-function StoryTab({ people, relationships }) {
+function StoryTab({ people, relationships, password }) {
   const [apiKey, setApiKey]           = useState(() => localStorage.getItem('ft_apikey') || '');
   const [story, setStory]             = useState(() => localStorage.getItem('ft_story') || '');
   const [customPrompt, setCustomPrompt] = useState(() => localStorage.getItem('ft_customprompt') || '');
@@ -968,7 +968,7 @@ function StoryTab({ people, relationships }) {
     try {
       const res = await fetch('/api/story', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-password': password || '' },
         body: JSON.stringify({ apiKey, prompt: buildPrompt() })
       });
       const data = await res.json();
@@ -992,7 +992,7 @@ function StoryTab({ people, relationships }) {
 
   return (
     <div>
-      <ConnectionFinder people={people} relationships={relationships} apiKey={apiKey} />
+      <ConnectionFinder people={people} relationships={relationships} apiKey={apiKey} password={password} />
       <h3 style={{color:'var(--accent)',marginBottom:6}}>Our Family Story</h3>
       <p style={{color:'var(--text-muted)',fontSize:13,marginBottom:14}}>
         AI generates a narrative family history from your data. Uses Claude Haiku — ~$0.001 per story.
@@ -1224,7 +1224,7 @@ function App() {
           onEdit={p => setEditing(p)} onAdd={() => setEditing({})} />}
         {tab === 'tree' && <TreeView people={data.people} relationships={data.relationships}
           onEdit={p => setEditing(p)} onAdd={() => setEditing({})} />}
-        {tab === 'story' && <StoryTab people={data.people} relationships={data.relationships} />}
+        {tab === 'story' && <StoryTab people={data.people} relationships={data.relationships} password={password} />}
         {tab === 'share' && <ShareTab data={data} onImport={d => setData(d)} />}
       </div>
       {editing && <PersonModal person={editing} people={data.people} relationships={data.relationships}
