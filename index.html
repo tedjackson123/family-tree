@@ -352,17 +352,15 @@ function PersonModal({ person, people, relationships, onSave, onDelete, onClose 
           )}
           {others.length > 0 ? (
             <div className="rel-row">
-              <select value={relType} onChange={e => setRelType(e.target.value)}>
+              <select value={relType} onChange={e => setRelType(e.target.value)}
+                style={{flexShrink:0, width:120}}>
                 <option value="parent-of">Parent of</option>
                 <option value="child-of">Child of</option>
                 <option value="spouse-of">Spouse of</option>
                 <option value="sibling-of">Sibling of</option>
               </select>
-              <select value={relTarget} onChange={e => setRelTarget(e.target.value)}>
-                <option value="">Select person...</option>
-                {others.map(p => <option key={p.id} value={p.id}>{p.fullName}</option>)}
-              </select>
-              <button className="btn btn-secondary" onClick={addRel}>Add</button>
+              <SearchSelect people={others} value={relTarget} onChange={setRelTarget} />
+              <button className="btn btn-secondary" onClick={addRel} style={{flexShrink:0}}>Add</button>
             </div>
           ) : (
             <p style={{fontSize:13,color:'var(--text-muted)',marginTop:8}}>
@@ -384,14 +382,73 @@ function PersonModal({ person, people, relationships, onSave, onDelete, onClose 
 const SUFFIXES = new Set(['jr','jr.','sr','sr.','ii','iii','iv','v','vi','esq','esq.','phd','md']);
 
 function displayName(p) {
-  // "Nickname LastName" if nickname exists, otherwise full name
-  // LastName = last word that isn't a suffix
   if (p.nickname) {
     const parts = p.fullName.trim().split(/\s+/);
     const lastName = [...parts].reverse().find(w => !SUFFIXES.has(w.toLowerCase())) || '';
     return lastName ? `${p.nickname} ${lastName}` : p.nickname;
   }
   return p.fullName;
+}
+
+function getLastName(p) {
+  const parts = p.fullName.trim().split(/\s+/);
+  return [...parts].reverse().find(w => !SUFFIXES.has(w.toLowerCase())) || p.fullName;
+}
+
+// Searchable person picker — replaces plain <select> in relationship row
+function SearchSelect({ people, value, onChange, placeholder = 'Type to search…' }) {
+  const [search, setSearch] = useState('');
+  const [open, setOpen]     = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function away(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    document.addEventListener('mousedown', away);
+    return () => document.removeEventListener('mousedown', away);
+  }, []);
+
+  const selected = people.find(p => p.id === value);
+  const q = search.toLowerCase();
+  const filtered = people.filter(p =>
+    p.fullName.toLowerCase().includes(q) ||
+    (p.nickname && p.nickname.toLowerCase().includes(q)) ||
+    (p.birthYear && p.birthYear.toString().includes(q))
+  );
+
+  return (
+    <div ref={ref} style={{position:'relative', flex:1}}>
+      <input
+        value={open ? search : (selected ? displayName(selected) : '')}
+        onChange={e => { setSearch(e.target.value); onChange(''); setOpen(true); }}
+        onFocus={() => { setSearch(''); setOpen(true); }}
+        placeholder={placeholder}
+        style={{width:'100%', padding:'7px 10px', border:'1px solid var(--border)',
+          borderRadius:6, background:'var(--warm-bg)', fontSize:13, fontFamily:'inherit'}}
+      />
+      {open && filtered.length > 0 && (
+        <div style={{position:'absolute', top:'100%', left:0, right:0, background:'var(--card-bg)',
+          border:'1px solid var(--border)', borderRadius:6, maxHeight:200, overflowY:'auto',
+          zIndex:200, boxShadow:'0 4px 12px rgba(0,0,0,0.12)'}}>
+          {filtered.map(p => (
+            <div key={p.id}
+              onMouseDown={e => { e.preventDefault(); onChange(p.id); setOpen(false); setSearch(''); }}
+              style={{padding:'8px 12px', cursor:'pointer', fontSize:13,
+                borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between'}}>
+              <span>{displayName(p)}</span>
+              {p.birthYear && <span style={{fontSize:11, color:'var(--text-muted)'}}>{p.birthYear}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+      {open && filtered.length === 0 && search && (
+        <div style={{position:'absolute', top:'100%', left:0, right:0, background:'var(--card-bg)',
+          border:'1px solid var(--border)', borderRadius:6, padding:'10px 12px',
+          zIndex:200, fontSize:13, color:'var(--text-muted)'}}>
+          No matches for "{search}"
+        </div>
+      )}
+    </div>
+  );
 }
 
 function PeopleTab({ people, relationships, onEdit, onAdd }) {
@@ -496,6 +553,7 @@ function TreeView({ people, relationships, onEdit, onAdd }) {
   const [centerId, setCenterId] = useState(() => people[0]?.id || null);
   const [history, setHistory] = useState([]);
   const [useNick, setUseNick] = useState(true);
+  const [sideSort, setSideSort] = useState('first');
 
   // Sync centerId if people list changes (e.g. after import)
   useEffect(() => {
@@ -580,12 +638,29 @@ function TreeView({ people, relationships, onEdit, onAdd }) {
     <div className="sphere-wrap">
       {/* Sidebar: full person list */}
       <div className="sphere-sidebar">
-        <h4>All Members</h4>
+        <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6}}>
+          <h4 style={{margin:0}}>All Members</h4>
+          <div style={{display:'flex', gap:3}}>
+            {['first','last'].map(s => (
+              <button key={s} onClick={() => setSideSort(s)}
+                style={{fontSize:10, padding:'2px 7px', border:'1px solid var(--border)', borderRadius:4, cursor:'pointer',
+                  background: sideSort===s ? 'var(--accent)' : 'var(--warm-bg)',
+                  color: sideSort===s ? 'white' : 'var(--text-muted)', fontFamily:'inherit'}}>
+                {s === 'first' ? 'First' : 'Last'}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="sphere-list">
-          {[...people].sort((a,b) => a.fullName.localeCompare(b.fullName)).map(p => (
+          {[...people].sort((a, b) => {
+            if (sideSort === 'last') return getLastName(a).localeCompare(getLastName(b));
+            return displayName(a).localeCompare(displayName(b));
+          }).map(p => (
             <div key={p.id} className={`sphere-list-item ${p.id === centerId ? 'active' : ''}`}
               onClick={() => navigateTo(p.id)}>
-              {p.fullName}
+              {sideSort === 'last'
+                ? `${getLastName(p)}, ${p.nickname || p.fullName.split(' ')[0]}`
+                : displayName(p)}
               {p.birthYear ? <span style={{fontSize:11,opacity:0.7}}> · {p.birthYear}</span> : null}
             </div>
           ))}
@@ -703,6 +778,149 @@ function TreeView({ people, relationships, onEdit, onAdd }) {
   );
 }
 
+// BFS to find shortest relationship path between two people
+function findConnection(aId, bId, people, relationships) {
+  if (!aId || !bId || aId === bId) return null;
+  const adj = {};
+  people.forEach(p => { adj[p.id] = []; });
+  const flip = { 'parent-of':'child-of','child-of':'parent-of','spouse-of':'spouse-of','sibling-of':'sibling-of' };
+  relationships.forEach(r => {
+    if (adj[r.from]) adj[r.from].push({ otherId: r.to,   type: r.type });
+    if (adj[r.to])   adj[r.to].push({   otherId: r.from, type: flip[r.type] || r.type });
+  });
+  const visited = new Set([aId]);
+  const queue = [{ id: aId, path: [{ personId: aId }] }];
+  while (queue.length > 0) {
+    const { id, path } = queue.shift();
+    for (const { otherId, type } of (adj[id] || [])) {
+      if (visited.has(otherId)) continue;
+      visited.add(otherId);
+      const newPath = [...path, { type, personId: otherId }];
+      if (otherId === bId) return newPath;
+      queue.push({ id: otherId, path: newPath });
+    }
+  }
+  return null;
+}
+
+function ConnectionFinder({ people, relationships, apiKey }) {
+  const [personA, setPersonA] = useState('');
+  const [personB, setPersonB] = useState('');
+  const [result, setResult]   = useState(null);
+  const [aiDesc, setAiDesc]   = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState('');
+
+  const personMap = {};
+  people.forEach(p => { personMap[p.id] = p; });
+
+  function findPath() {
+    setAiDesc(''); setError('');
+    if (!personA || !personB) { setError('Please select both people.'); return; }
+    if (personA === personB) { setError('Please select two different people.'); return; }
+    const path = findConnection(personA, personB, people, relationships);
+    setResult(path);
+    if (!path) setError('No connection found between these two people.');
+  }
+
+  function pathToText(path) {
+    if (!path) return '';
+    return path.map((step, i) => {
+      const name = displayName(personMap[step.personId]) || '?';
+      if (i === 0) return name;
+      const rel = step.type.replace('-', ' ');
+      return ` → ${rel} → ${name}`;
+    }).join('');
+  }
+
+  async function describeWithAI() {
+    if (!result) return;
+    if (!apiKey) { setError('Enter your Anthropic API key in the Story section below to use AI descriptions.'); return; }
+    setLoading(true); setAiDesc(''); setError('');
+    const pathText = pathToText(result);
+    const nameA = displayName(personMap[personA]);
+    const nameB = displayName(personMap[personB]);
+    const prompt = `Given this family relationship path: "${pathText}", describe in one or two plain English sentences how ${nameA} and ${nameB} are related. Be specific and natural, like "They are second cousins — their grandmothers are sisters." Only give the relationship description, nothing else.`;
+    try {
+      const res = await fetch('/api/story', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey, prompt })
+      });
+      const data = await res.json();
+      if (data.error) setError(data.error); else setAiDesc(data.story);
+    } catch { setError('Failed to reach server.'); }
+    setLoading(false);
+  }
+
+  const REL_LABEL_FRIENDLY = {
+    'parent-of': 'parent of', 'child-of': 'child of',
+    'spouse-of': 'spouse of', 'sibling-of': 'sibling of'
+  };
+
+  return (
+    <div style={{background:'var(--warm-bg)', border:'1px solid var(--border)', borderRadius:10,
+      padding:18, marginBottom:20}}>
+      <h4 style={{color:'var(--accent)', marginBottom:4}}>🔗 Find the Connection</h4>
+      <p style={{fontSize:13, color:'var(--text-muted)', marginBottom:12}}>
+        Pick two family members to see how they are related.
+      </p>
+      <div style={{display:'flex', gap:8, alignItems:'flex-start', flexWrap:'wrap', marginBottom:10}}>
+        <div style={{flex:1, minWidth:180}}>
+          <div style={{fontSize:12, color:'var(--text-muted)', marginBottom:3}}>Person A</div>
+          <SearchSelect people={people} value={personA} onChange={v => { setPersonA(v); setResult(null); setAiDesc(''); }} />
+        </div>
+        <div style={{flex:1, minWidth:180}}>
+          <div style={{fontSize:12, color:'var(--text-muted)', marginBottom:3}}>Person B</div>
+          <SearchSelect people={people} value={personB} onChange={v => { setPersonB(v); setResult(null); setAiDesc(''); }} />
+        </div>
+        <div style={{paddingTop:18}}>
+          <button className="btn btn-primary" onClick={findPath} style={{whiteSpace:'nowrap'}}>
+            Find Connection
+          </button>
+        </div>
+      </div>
+
+      {error && <p style={{color:'var(--danger)', fontSize:13, marginBottom:8}}>{error}</p>}
+
+      {result && (
+        <div style={{marginTop:8}}>
+          <div style={{fontSize:13, fontWeight:600, color:'var(--text-muted)', marginBottom:6}}>
+            Relationship path ({result.length - 1} step{result.length !== 2 ? 's' : ''}):
+          </div>
+          <div style={{display:'flex', flexWrap:'wrap', alignItems:'center', gap:4, marginBottom:10}}>
+            {result.map((step, i) => {
+              const p = personMap[step.personId];
+              return (
+                <React.Fragment key={i}>
+                  <span style={{background:'var(--card-bg)', border:'1px solid var(--accent-light)',
+                    borderRadius:20, padding:'3px 12px', fontSize:13, color:'var(--accent)', fontWeight:600}}>
+                    {p ? displayName(p) : '?'}
+                  </span>
+                  {i < result.length - 1 && (
+                    <span style={{fontSize:11, color:'var(--text-muted)', padding:'0 2px'}}>
+                      → {REL_LABEL_FRIENDLY[result[i+1].type] || result[i+1].type} →
+                    </span>
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </div>
+
+          {aiDesc
+            ? <div style={{padding:'10px 14px', background:'var(--card-bg)', border:'1px solid var(--border)',
+                borderRadius:8, fontSize:14, lineHeight:1.6, fontStyle:'italic', color:'var(--text)'}}>{aiDesc}</div>
+            : <button className="btn btn-secondary" onClick={describeWithAI} disabled={loading}
+                style={{fontSize:12, padding:'5px 12px'}}>
+                {loading ? 'Describing…' : '✦ Describe with AI'}
+              </button>
+          }
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StoryTab({ people, relationships }) {
   const [apiKey, setApiKey]           = useState(() => localStorage.getItem('ft_apikey') || '');
   const [story, setStory]             = useState(() => localStorage.getItem('ft_story') || '');
@@ -774,6 +992,7 @@ function StoryTab({ people, relationships }) {
 
   return (
     <div>
+      <ConnectionFinder people={people} relationships={relationships} apiKey={apiKey} />
       <h3 style={{color:'var(--accent)',marginBottom:6}}>Our Family Story</h3>
       <p style={{color:'var(--text-muted)',fontSize:13,marginBottom:14}}>
         AI generates a narrative family history from your data. Uses Claude Haiku — ~$0.001 per story.
