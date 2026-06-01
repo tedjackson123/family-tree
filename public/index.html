@@ -856,16 +856,36 @@ function ConnectionFinder({ people, relationships, apiKey, password }) {
     const pathText = pathToText(result);
     const nameA = displayName(personMap[personA]);
     const nameB = displayName(personMap[personB]);
-    const prompt = `Given this family relationship path: "${pathText}", describe in one or two plain English sentences how ${nameA} and ${nameB} are related.
+    // Pre-label each step with explicit generation offset so Claude can't miscount
+    const GEN_UP   = new Set(['child-of']);
+    const GEN_DOWN = new Set(['parent-of']);
+    let genOffset = 0;
+    const labeledSteps = path.map((step, i) => {
+      const name = displayName(personMap[step.personId]) || '?';
+      if (i === 0) return `${name} [Person A — ${nameA}]`;
+      if (GEN_UP.has(step.type))   genOffset++;
+      if (GEN_DOWN.has(step.type)) genOffset--;
+      const rel = step.type.replace('-', ' ');
+      const genLabel = genOffset > 0
+        ? `${genOffset === 1 ? 'parent' : genOffset === 2 ? 'grandparent' : genOffset === 3 ? 'great-grandparent' : `${'great-'.repeat(genOffset-2)}grandparent`} of ${nameA}`
+        : genOffset < 0
+        ? `${-genOffset === 1 ? 'child' : -genOffset === 2 ? 'grandchild' : `${'great-'.repeat(-genOffset-2)}grandchild`} of ${nameA}`
+        : `same generation as ${nameA}`;
+      return `${name} [${rel} of previous — ${genLabel}]`;
+    });
 
-Use standard cousin terminology:
-- Siblings share the same parents.
-- First cousins share grandparents (their parents are siblings).
-- Second cousins share great-grandparents (their grandparents are siblings).
-- Third cousins share great-great-grandparents (their great-grandparents are siblings).
-- "Once removed" means one generation apart from a cousin relationship.
+    const prompt = `Here is the exact documented relationship path between ${nameA} and ${nameB}, with each person's generation relative to ${nameA} clearly labeled:
 
-Count the generations carefully from the path above. Be specific and natural, like "They are second cousins — their grandmothers are sisters." Only give the relationship description, nothing else.`;
+${labeledSteps.join('\n')}
+
+Using standard genealogical cousin rules:
+- The cousin degree = (generations to shared ancestor from closer person) - 1
+- "Once removed" = 1 generation difference between the two people's distances to the shared ancestor
+- "Twice removed" = 2 generation difference
+
+The shared ancestral link in this path is where the direction changes (where child-of steps end and parent-of steps begin, or where a sibling-of appears). Use the labeled generations above to count precisely.
+
+Describe in 1-2 natural sentences how ${nameA} and ${nameB} are related. Be specific about which ancestors connect them. Only give the relationship description, nothing else.`;
     try {
       const res = await fetch('/api/story', {
         method: 'POST',
@@ -1625,7 +1645,7 @@ function App() {
         <p>Preserving our heritage, one generation at a time</p>
       </div>
       <div className="tabs">
-        {[['people','People'],['tree','Tree View'],['story','Our Story'],['refine','Refine'],['share','Save & Share'],['log','Change Log']].map(([k,l]) =>
+        {[['tree','Tree View'],['people','People'],['story','Our Story'],['refine','Refine'],['share','Save & Share'],['log','Change Log']].map(([k,l]) =>
           <button key={k} className={`tab ${tab===k?'active':''}`} onClick={() => setTab(k)}>{l}</button>
         )}
         <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:6,paddingBottom:2,flexWrap:'wrap'}}>
