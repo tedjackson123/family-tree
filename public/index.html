@@ -943,6 +943,182 @@ Count the generations carefully from the path above. Be specific and natural, li
   );
 }
 
+// ── Family Chapters ───────────────────────────────────────────────────────────
+function FamilyChapters({ people, relationships, apiKey, password }) {
+  // Auto-detect surnames from the tree
+  const allSurnames = useMemo(() => {
+    const counts = {};
+    people.forEach(p => {
+      const last = getLastName(p);
+      if (last && last !== p.fullName) {
+        counts[last] = (counts[last] || 0) + 1;
+      }
+      // Also check maiden names
+      if (p.maidenName) {
+        const parts = p.maidenName.trim().split(/\s+/);
+        const mn = parts[parts.length - 1];
+        if (mn) counts[mn] = (counts[mn] || 0) + 1;
+      }
+    });
+    return Object.entries(counts).sort((a,b) => b[1]-a[1]).map(([name]) => name);
+  }, [people]);
+
+  const [selected, setSelected] = useState([]);
+  const [chapters, setChapters] = useState(() => localStorage.getItem('ft_chapters') || '');
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState('');
+  const [copied, setCopied]     = useState(false);
+
+  useEffect(() => { localStorage.setItem('ft_chapters', chapters); }, [chapters]);
+
+  function toggleSurname(name) {
+    setSelected(s => s.includes(name) ? s.filter(x => x !== name) : s.length < 5 ? [...s, name] : s);
+  }
+
+  function buildChapterPrompt() {
+    // Build family data filtered to selected surnames
+    const pmap = {}; people.forEach(p => pmap[p.id] = p);
+
+    const relevantPeople = people.filter(p => {
+      const last = getLastName(p);
+      const maiden = p.maidenName ? p.maidenName.trim().split(/\s+/).pop() : '';
+      return selected.some(s => last === s || maiden === s);
+    });
+
+    const pList = relevantPeople.map(p => {
+      let s = p.fullName;
+      if (p.maidenName) s += ` (née ${p.maidenName})`;
+      if (p.birthYear)  s += `, b.${p.birthYear}`;
+      if (p.deathYear)  s += `, d.${p.deathYear}`;
+      if (p.birthPlace) s += `, from ${p.birthPlace}`;
+      if (p.occupation) s += `, ${p.occupation}`;
+      if (p.origin)     s += ` [${p.origin}]`;
+      if (p.notes)      s += `. ${p.notes}`;
+      return s;
+    }).join('\n');
+
+    const relevantIds = new Set(relevantPeople.map(p => p.id));
+    const rList = relationships
+      .filter(r => relevantIds.has(r.from) || relevantIds.has(r.to))
+      .map(r => `${pmap[r.from]?.fullName||'?'} is ${r.type.replace('-',' ')} ${pmap[r.to]?.fullName||'?'}`)
+      .join('\n');
+
+    const surnameList = selected.join(', ');
+
+    return `You are writing a heartfelt family history book. Write it in warm, engaging prose — no bullet points or lists.
+
+Write the following sections, each clearly labeled with a heading:
+
+${selected.map((s, i) => `Chapter ${i+1}: The ${s} Family
+A 150-200 word chapter about the ${s} family members listed below. Cover their origins, where they came from, what they did, and what defined them as a family.`).join('\n\n')}
+
+Final Chapter: How the ${surnameList} Families Come Together
+A 200-250 word chapter describing how these families became connected — through marriages, children, and shared history. Be specific about which people bridged the families.
+
+Family Members:
+${pList}
+
+Relationships:
+${rList}`;
+  }
+
+  async function generate() {
+    if (selected.length < 2) { setError('Please select at least 2 surnames.'); return; }
+    setLoading(true); setError(''); setChapters('');
+    try {
+      const res = await fetch('/api/story', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-password': password || '' },
+        body: JSON.stringify({ apiKey, prompt: buildChapterPrompt() })
+      });
+      const data = await res.json();
+      if (data.error) setError(data.error); else setChapters(data.story);
+    } catch { setError('Failed to connect to server.'); }
+    setLoading(false);
+  }
+
+  // Render chapters with headings styled
+  function renderChapters(text) {
+    if (!text) return null;
+    return text.split('\n').map((line, i) => {
+      const isHeading = /^(chapter|final chapter)/i.test(line.trim()) || /^#+\s/.test(line);
+      if (isHeading) return (
+        <div key={i} style={{fontWeight:700, fontSize:16, color:'var(--accent)',
+          marginTop:i===0?0:20, marginBottom:4, fontFamily:'Georgia'}}>
+          {line.replace(/^#+\s*/, '')}
+        </div>
+      );
+      if (!line.trim()) return <div key={i} style={{height:8}} />;
+      return <div key={i} style={{lineHeight:1.8, fontSize:15}}>{line}</div>;
+    });
+  }
+
+  return (
+    <div style={{background:'var(--warm-bg)', border:'1px solid var(--border)',
+      borderRadius:10, padding:18, marginBottom:20}}>
+      <h4 style={{color:'var(--accent)', marginBottom:4}}>📖 Family Chapters</h4>
+      <p style={{fontSize:13, color:'var(--text-muted)', marginBottom:12}}>
+        Select 2–5 family surnames. Claude writes a short chapter on each family, then a final chapter on how they all came together.
+      </p>
+
+      {/* Surname chips */}
+      <div style={{display:'flex', flexWrap:'wrap', gap:6, marginBottom:12}}>
+        {allSurnames.map(name => (
+          <button key={name} onClick={() => toggleSurname(name)}
+            style={{padding:'5px 14px', borderRadius:20, border:'1px solid',
+              fontSize:13, cursor:'pointer', fontFamily:'inherit', transition:'all 0.15s',
+              background: selected.includes(name) ? 'var(--accent)' : 'var(--card-bg)',
+              color:       selected.includes(name) ? 'white'        : 'var(--text)',
+              borderColor: selected.includes(name) ? 'var(--accent)' : 'var(--border)'}}>
+            {name}
+            {selected.includes(name) && <span style={{marginLeft:6, opacity:0.8}}>✓</span>}
+          </button>
+        ))}
+        {allSurnames.length === 0 && (
+          <p style={{fontSize:13, color:'var(--text-muted)'}}>Add family members with last names to see surnames here.</p>
+        )}
+      </div>
+
+      {selected.length > 0 && (
+        <div style={{fontSize:13, color:'var(--text-muted)', marginBottom:10}}>
+          Selected: <strong style={{color:'var(--accent)'}}>{selected.join(' · ')}</strong>
+          {' '}
+          <button onClick={() => setSelected([])}
+            style={{fontSize:11, color:'var(--danger)', background:'none', border:'none', cursor:'pointer', padding:0}}>
+            clear
+          </button>
+        </div>
+      )}
+
+      <div style={{display:'flex', gap:8, alignItems:'center', flexWrap:'wrap', marginBottom:8}}>
+        <button className="btn btn-primary" onClick={generate}
+          disabled={loading || selected.length < 2}>
+          {loading ? 'Writing chapters…' : chapters ? '↺ Rewrite Chapters' : '✦ Write Family Chapters'}
+        </button>
+        {chapters && (
+          <button className="btn btn-secondary" onClick={() => { navigator.clipboard.writeText(chapters); setCopied(true); setTimeout(()=>setCopied(false),2000); }}>
+            {copied ? '✓ Copied!' : 'Copy'}
+          </button>
+        )}
+        {chapters && (
+          <button className="btn btn-secondary" onClick={() => setChapters('')}
+            style={{marginLeft:'auto', fontSize:12, padding:'5px 10px'}}>Clear</button>
+        )}
+      </div>
+
+      {error && <p style={{color:'var(--danger)', fontSize:13, marginBottom:8}}>{error}</p>}
+
+      {chapters
+        ? <div className="story-area">{renderChapters(chapters)}</div>
+        : <div className="story-area" style={{color:'var(--text-muted)', textAlign:'center',
+            paddingTop:40, fontStyle:'italic', fontSize:14}}>
+            Select surnames above and click Write Family Chapters…
+          </div>
+      }
+    </div>
+  );
+}
+
 function StoryTab({ people, relationships, password }) {
   const [apiKey, setApiKey]           = useState(() => localStorage.getItem('ft_apikey') || '');
   const [story, setStory]             = useState(() => localStorage.getItem('ft_story') || '');
@@ -1015,6 +1191,7 @@ function StoryTab({ people, relationships, password }) {
   return (
     <div>
       <ConnectionFinder people={people} relationships={relationships} apiKey={apiKey} password={password} />
+      <FamilyChapters people={people} relationships={relationships} apiKey={apiKey} password={password} />
       <h3 style={{color:'var(--accent)',marginBottom:6}}>Our Family Story</h3>
       <p style={{color:'var(--text-muted)',fontSize:13,marginBottom:14}}>
         AI generates a narrative family history from your data. Uses Claude Haiku — ~$0.001 per story.
