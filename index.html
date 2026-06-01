@@ -853,18 +853,13 @@ function ConnectionFinder({ people, relationships, apiKey, password }) {
     if (!result) return;
     if (!apiKey) { setError('Enter your Anthropic API key in the Story section below to use AI descriptions.'); return; }
     setLoading(true); setAiDesc(''); setError('');
-    const pathText = pathToText(result);
     const nameA = displayName(personMap[personA]);
     const nameB = displayName(personMap[personB]);
-    // Analyse path characteristics before sending to Claude
     const types = result.slice(1).map(s => s.type);
     const hasSpouse  = types.includes('spouse-of');
     const hasSibling = types.includes('sibling-of');
-
-    // Count generations up (child-of) and down (parent-of) for blood paths
     let up = 0, down = 0;
     types.forEach(t => { if (t === 'child-of') up++; else if (t === 'parent-of') down++; });
-
     const pathText = result.map((step, i) => {
       const name = displayName(personMap[step.personId]) || '?';
       return i === 0 ? name : ` → ${step.type.replace('-',' ')} → ${name}`;
