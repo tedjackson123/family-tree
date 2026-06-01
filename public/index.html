@@ -860,7 +860,7 @@ function ConnectionFinder({ people, relationships, apiKey, password }) {
     const GEN_UP   = new Set(['child-of']);
     const GEN_DOWN = new Set(['parent-of']);
     let genOffset = 0;
-    const labeledSteps = path.map((step, i) => {
+    const labeledSteps = result.map((step, i) => {
       const name = displayName(personMap[step.personId]) || '?';
       if (i === 0) return `${name} [Person A — ${nameA}]`;
       if (GEN_UP.has(step.type))   genOffset++;
