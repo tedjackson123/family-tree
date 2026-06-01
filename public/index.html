@@ -550,7 +550,10 @@ function SphereNode({ x, y, person, isCenter, isFocused, onClick, useNick = fals
 
 function TreeView({ people, relationships, onEdit, onAdd }) {
   const personMap = useMemo(() => { const m={}; people.forEach(p => m[p.id]=p); return m; }, [people]);
-  const [centerId, setCenterId] = useState(() => people[0]?.id || null);
+  const [centerId, setCenterId] = useState(() => {
+    const tk = people.find(p => p.fullName.toLowerCase().includes('tk jackson') || p.fullName.toLowerCase().includes('t.k. jackson'));
+    return tk?.id || people[0]?.id || null;
+  });
   const [history, setHistory] = useState([]);
   const [useNick, setUseNick] = useState(true);
   const [sideSort, setSideSort] = useState('first');
@@ -1140,7 +1143,7 @@ function App() {
   const [authed,   setAuthed]   = useState(false);
   const [data, setDataRaw]      = useState(() => cacheLoad() || { people: [], relationships: [] });
   const [syncStatus, setSyncStatus] = useState('offline');
-  const [tab, setTab]     = useState('people');
+  const [tab, setTab]     = useState('tree');
   const [editing, setEditing] = useState(null);
 
   // On mount: if password is already cached, verify it and load cloud data
