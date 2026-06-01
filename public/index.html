@@ -1352,6 +1352,194 @@ function ShareTab({ data, onImport }) {
   );
 }
 
+// ── Refine Tab ────────────────────────────────────────────────────────────────
+function RefineTab({ people, relationships, password, apiKey, onAddPerson, onUpdatePerson, onAddRelationship }) {
+  const [docText, setDocText]         = useState('');
+  const [suggestions, setSuggestions] = useState(null);
+  const [dismissed, setDismissed]     = useState(new Set());
+  const [accepted, setAccepted]       = useState(new Set());
+  const [loading, setLoading]         = useState(false);
+  const [error, setError]             = useState('');
+  const [fileName, setFileName]       = useState('');
+
+  const personMap = {};
+  people.forEach(p => { personMap[p.id] = p; });
+
+  function handleFileUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    setFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = ev => setDocText(ev.target.result);
+    reader.readAsText(file);
+  }
+
+  async function analyze() {
+    if (!docText.trim()) { setError('Please paste or upload a document first.'); return; }
+    setLoading(true); setError(''); setSuggestions(null);
+    setDismissed(new Set()); setAccepted(new Set());
+    try {
+      const res = await fetch('/api/refine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-password': password || '' },
+        body: JSON.stringify({ text: docText, treeData: { people, relationships }, apiKey })
+      });
+      const data = await res.json();
+      if (data.error) setError(data.error);
+      else setSuggestions(data.suggestions || []);
+    } catch { setError('Failed to connect to server.'); }
+    setLoading(false);
+  }
+
+  function accept(idx, suggestion) {
+    try {
+      if (suggestion.action === 'add_person') {
+        onAddPerson(suggestion.data || {});
+      } else if (suggestion.action === 'update_person') {
+        if (!suggestion.personId) { setError(`Suggestion ${idx+1}: no person ID — cannot apply automatically.`); return; }
+        onUpdatePerson(suggestion.personId, suggestion.data || {});
+      } else if (suggestion.action === 'add_relationship') {
+        const { fromName, toName, type } = suggestion.data || {};
+        const from = people.find(p => p.fullName.toLowerCase().includes(fromName?.toLowerCase()));
+        const to   = people.find(p => p.fullName.toLowerCase().includes(toName?.toLowerCase()));
+        if (!from || !to) { setError(`Could not find "${fromName}" or "${toName}" in your tree.`); return; }
+        onAddRelationship(from.id, to.id, type);
+      }
+      setAccepted(s => new Set([...s, idx]));
+    } catch(e) { setError('Error applying suggestion: ' + e.message); }
+  }
+
+  function dismiss(idx) { setDismissed(s => new Set([...s, idx])); }
+
+  const CONFIDENCE_STYLE = {
+    high:   { bg:'#f0f7ef', border:'#c3dbbf', color:'#4a7c3f', label:'High confidence' },
+    medium: { bg:'#fdf6e8', border:'#e8d5a3', color:'#8b6914', label:'Medium confidence' },
+    low:    { bg:'#fdf0ee', border:'#f0c4bb', color:'#b5442e', label:'Low confidence'  },
+  };
+  const ACTION_LABEL = {
+    add_person:       '+ Add Person',
+    update_person:    '✎ Update Person',
+    add_relationship: '⟷ Add Relationship',
+    note:             '📌 Note',
+  };
+
+  const visible = suggestions ? suggestions.filter((_,i) => !dismissed.has(i)) : [];
+  const pendingCount = suggestions ? suggestions.filter((_,i) => !dismissed.has(i) && !accepted.has(i)).length : 0;
+
+  return (
+    <div>
+      <h3 style={{color:'var(--accent)', marginBottom:4}}>🔍 Refine</h3>
+      <p style={{color:'var(--text-muted)', fontSize:13, marginBottom:16}}>
+        Paste or upload a family history document — an obituary, census record, family letter, or any text.
+        Claude will compare it to your tree and suggest specific improvements.
+      </p>
+
+      {/* Document input */}
+      <div style={{marginBottom:12}}>
+        <div style={{display:'flex', gap:8, alignItems:'center', marginBottom:8, flexWrap:'wrap'}}>
+          <label style={{fontSize:13, fontWeight:600, color:'var(--text-muted)'}}>Upload a text file</label>
+          <input type="file" accept=".txt,.csv,.md" onChange={handleFileUpload}
+            style={{fontSize:13}} />
+          {fileName && <span style={{fontSize:12, color:'var(--accent)'}}>📄 {fileName}</span>}
+        </div>
+        <textarea
+          placeholder="…or paste text here. Works great with obituaries, census records, family letters, genealogy website text, or any family history document."
+          value={docText} onChange={e => setDocText(e.target.value)}
+          style={{width:'100%', minHeight:140, padding:'10px 12px', border:'1px solid var(--border)',
+            borderRadius:8, background:'var(--warm-bg)', resize:'vertical', fontSize:13,
+            fontFamily:'inherit', lineHeight:1.6}} />
+        <div style={{fontSize:12, color:'var(--text-muted)', marginTop:4}}>
+          💡 Tip: For PDFs or Word docs, open the file and select all text (Ctrl+A), copy, and paste above.
+        </div>
+      </div>
+
+      <div style={{display:'flex', gap:8, alignItems:'center', marginBottom:16, flexWrap:'wrap'}}>
+        <button className="btn btn-primary" onClick={analyze}
+          disabled={loading || !docText.trim()}>
+          {loading ? 'Analyzing…' : suggestions ? '↺ Re-analyze' : '✦ Analyze Document'}
+        </button>
+        {suggestions && (
+          <span style={{fontSize:13, color:'var(--text-muted)'}}>
+            {suggestions.length === 0
+              ? 'No suggestions found.'
+              : `${pendingCount} of ${suggestions.length} suggestion${suggestions.length!==1?'s':''} remaining`}
+          </span>
+        )}
+        {suggestions && suggestions.length > 0 && (
+          <button className="btn btn-secondary" style={{marginLeft:'auto', fontSize:12, padding:'5px 10px'}}
+            onClick={() => { setSuggestions(null); setDismissed(new Set()); setAccepted(new Set()); }}>
+            Clear Results
+          </button>
+        )}
+      </div>
+
+      {error && <p style={{color:'var(--danger)', fontSize:13, marginBottom:12}}>{error}</p>}
+
+      {/* Suggestion cards */}
+      {suggestions && suggestions.length === 0 && (
+        <div style={{textAlign:'center', padding:'40px 20px', color:'var(--text-muted)', fontStyle:'italic'}}>
+          No suggestions — the document doesn't appear to contain new information for your tree.
+        </div>
+      )}
+
+      {visible.length > 0 && (
+        <div style={{display:'flex', flexDirection:'column', gap:10}}>
+          {suggestions.map((s, idx) => {
+            if (dismissed.has(idx)) return null;
+            const conf = CONFIDENCE_STYLE[s.confidence] || CONFIDENCE_STYLE.medium;
+            const isAccepted = accepted.has(idx);
+            return (
+              <div key={idx} style={{border:'1px solid var(--border)', borderRadius:10,
+                padding:'14px 16px', background: isAccepted ? '#f0f7ef' : 'var(--card-bg)',
+                opacity: isAccepted ? 0.75 : 1, transition:'opacity 0.2s'}}>
+                <div style={{display:'flex', gap:8, alignItems:'flex-start', flexWrap:'wrap'}}>
+                  <span style={{fontSize:11, fontWeight:700, padding:'3px 8px', borderRadius:20,
+                    background:'var(--warm-bg)', border:'1px solid var(--border)', color:'var(--text-muted)',
+                    whiteSpace:'nowrap'}}>
+                    {ACTION_LABEL[s.action] || s.action}
+                  </span>
+                  <span style={{fontSize:11, padding:'3px 8px', borderRadius:20, whiteSpace:'nowrap',
+                    background:conf.bg, border:`1px solid ${conf.border}`, color:conf.color}}>
+                    {conf.label}
+                  </span>
+                  <div style={{flex:1, fontSize:14, color:'var(--text)', lineHeight:1.5}}>
+                    {s.description}
+                    {s.action === 'update_person' && s.personId && personMap[s.personId] && (
+                      <div style={{fontSize:12, color:'var(--text-muted)', marginTop:2}}>
+                        Matches: <strong>{personMap[s.personId].fullName}</strong>
+                      </div>
+                    )}
+                    {s.action === 'note' && s.data?.text && (
+                      <div style={{fontSize:13, color:'var(--text-muted)', marginTop:4, fontStyle:'italic'}}>
+                        {s.data.text}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{display:'flex', gap:6, flexShrink:0}}>
+                    {!isAccepted && s.action !== 'note' && (
+                      <button className="btn btn-success" style={{fontSize:12, padding:'4px 12px'}}
+                        onClick={() => accept(idx, s)}>
+                        ✓ Accept
+                      </button>
+                    )}
+                    {isAccepted && (
+                      <span style={{fontSize:12, color:'var(--success)', padding:'4px 8px', fontWeight:600}}>✓ Applied</span>
+                    )}
+                    <button className="btn btn-secondary" style={{fontSize:12, padding:'4px 10px'}}
+                      onClick={() => dismiss(idx)}>
+                      Skip
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Change Log Tab ────────────────────────────────────────────────────────────
 function ChangeLogTab({ changeLog }) {
   if (!changeLog || changeLog.length === 0) return (
@@ -1549,7 +1737,7 @@ function App() {
         <p>Preserving our heritage, one generation at a time</p>
       </div>
       <div className="tabs">
-        {[['people','People'],['tree','Tree View'],['story','Our Story'],['share','Save & Share'],['log','Change Log']].map(([k,l]) =>
+        {[['people','People'],['tree','Tree View'],['story','Our Story'],['refine','Refine'],['share','Save & Share'],['log','Change Log']].map(([k,l]) =>
           <button key={k} className={`tab ${tab===k?'active':''}`} onClick={() => setTab(k)}>{l}</button>
         )}
         <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:6,paddingBottom:2,flexWrap:'wrap'}}>
@@ -1565,6 +1753,28 @@ function App() {
         {tab === 'tree' && <TreeView people={data.people} relationships={data.relationships}
           onEdit={p => setEditing(p)} onAdd={() => setEditing({})} />}
         {tab === 'story' && <StoryTab people={data.people} relationships={data.relationships} password={password} />}
+        {tab === 'refine' && <RefineTab
+          people={data.people} relationships={data.relationships}
+          password={password}
+          apiKey={localStorage.getItem('ft_apikey') || ''}
+          onAddPerson={prefill => setEditing(prefill)}
+          onUpdatePerson={(id, fields) => {
+            const person = data.people.find(p => p.id === id);
+            if (!person) return;
+            const updated = { ...person, ...fields };
+            const rels = data.relationships.filter(r => r.from === id || r.to === id);
+            savePerson(updated, rels);
+          }}
+          onAddRelationship={(fromId, toId, type) => {
+            const id = generateId();
+            const rel = (type === 'spouse-of' || type === 'sibling-of') && fromId > toId
+              ? { id, type, from: toId, to: fromId }
+              : { id, type, from: fromId, to: toId };
+            const changeLog = [...(data.changeLog||[]), makeLogEntry('added', `Added relationship: ${type} between ${data.people.find(p=>p.id===fromId)?.fullName} and ${data.people.find(p=>p.id===toId)?.fullName}`)].slice(-200);
+            const next = { ...data, relationships: [...data.relationships, rel], changeLog };
+            setDataRaw(next); saveAndRefresh(next);
+          }}
+        />}
         {tab === 'share' && <ShareTab data={data} onImport={d => {
           const changeLog = [...(data.changeLog || []), makeLogEntry('imported', 'Imported family tree data')].slice(-200);
           setData({ ...d, changeLog });
