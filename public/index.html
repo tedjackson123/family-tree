@@ -418,6 +418,9 @@ function SearchSelect({ people, value, onChange, placeholder = 'Type to searchâ€
   }, []);
 
   const selected = people.find(p => p.id === value);
+  const selectedLabel = selected
+    ? `${displayName(selected)}${selected.birthYear ? ` (${selected.birthYear})` : ''}`
+    : '';
   const q = search.toLowerCase();
   const filtered = people.filter(p =>
     p.fullName.toLowerCase().includes(q) ||
@@ -428,7 +431,7 @@ function SearchSelect({ people, value, onChange, placeholder = 'Type to searchâ€
   return (
     <div ref={ref} style={{position:'relative', flex:1}}>
       <input
-        value={open ? search : (selected ? displayName(selected) : '')}
+        value={open ? search : selectedLabel}
         onChange={e => { setSearch(e.target.value); onChange(''); setOpen(true); }}
         onFocus={() => { setSearch(''); setOpen(true); }}
         placeholder={placeholder}
