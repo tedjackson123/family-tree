@@ -856,36 +856,33 @@ function ConnectionFinder({ people, relationships, apiKey, password }) {
     const pathText = pathToText(result);
     const nameA = displayName(personMap[personA]);
     const nameB = displayName(personMap[personB]);
-    // Pre-label each step with explicit generation offset so Claude can't miscount
-    const GEN_UP   = new Set(['child-of']);
-    const GEN_DOWN = new Set(['parent-of']);
-    let genOffset = 0;
-    const labeledSteps = result.map((step, i) => {
+    // Analyse path characteristics before sending to Claude
+    const types = result.slice(1).map(s => s.type);
+    const hasSpouse  = types.includes('spouse-of');
+    const hasSibling = types.includes('sibling-of');
+
+    // Count generations up (child-of) and down (parent-of) for blood paths
+    let up = 0, down = 0;
+    types.forEach(t => { if (t === 'child-of') up++; else if (t === 'parent-of') down++; });
+
+    const pathText = result.map((step, i) => {
       const name = displayName(personMap[step.personId]) || '?';
-      if (i === 0) return `${name} [Person A — ${nameA}]`;
-      if (GEN_UP.has(step.type))   genOffset++;
-      if (GEN_DOWN.has(step.type)) genOffset--;
-      const rel = step.type.replace('-', ' ');
-      const genLabel = genOffset > 0
-        ? `${genOffset === 1 ? 'parent' : genOffset === 2 ? 'grandparent' : genOffset === 3 ? 'great-grandparent' : `${'great-'.repeat(genOffset-2)}grandparent`} of ${nameA}`
-        : genOffset < 0
-        ? `${-genOffset === 1 ? 'child' : -genOffset === 2 ? 'grandchild' : `${'great-'.repeat(-genOffset-2)}grandchild`} of ${nameA}`
-        : `same generation as ${nameA}`;
-      return `${name} [${rel} of previous — ${genLabel}]`;
-    });
+      return i === 0 ? name : ` → ${step.type.replace('-',' ')} → ${name}`;
+    }).join('');
 
-    const prompt = `Here is the exact documented relationship path between ${nameA} and ${nameB}, with each person's generation relative to ${nameA} clearly labeled:
+    const prompt = `You are a genealogy assistant. Describe in 1-2 plain English sentences how ${nameA} and ${nameB} are related, based strictly on this documented path:
 
-${labeledSteps.join('\n')}
+${pathText}
 
-Using standard genealogical cousin rules:
-- The cousin degree = (generations to shared ancestor from closer person) - 1
-- "Once removed" = 1 generation difference between the two people's distances to the shared ancestor
-- "Twice removed" = 2 generation difference
+Important rules:
+- If the path includes "spouse of", this is a marriage-based (in-law) connection, not a blood relationship. Describe it as such (e.g. "mother-in-law", "cousin's wife", etc.).
+- If it is purely a marriage connection with no shared blood ancestor, say they are related only by marriage.
+- For blood relationships, use standard cousin terminology: first cousins share grandparents, second cousins share great-grandparents, etc. "Once removed" = one generation of difference.
+- The path going UP means child-of steps (${up} of them). The path going DOWN means parent-of steps (${down} of them). Siblings share a parent without going up or down a generation.
+- Be honest if the connection is distant or primarily through marriage. Do not invent a closer relationship.
+- Only give the relationship description — no caveats, no "based on the path", just the plain statement.
 
-The shared ancestral link in this path is where the direction changes (where child-of steps end and parent-of steps begin, or where a sibling-of appears). Use the labeled generations above to count precisely.
-
-Describe in 1-2 natural sentences how ${nameA} and ${nameB} are related. Be specific about which ancestors connect them. Only give the relationship description, nothing else.`;
+Path characteristics: ${hasSpouse ? 'Contains a marriage link (in-law relationship).' : ''} ${hasSibling ? 'Contains a sibling link.' : ''} ${up} generation(s) up from ${nameA}, ${down} generation(s) down to ${nameB}.`;
     try {
       const res = await fetch('/api/story', {
         method: 'POST',
