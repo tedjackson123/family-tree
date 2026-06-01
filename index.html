@@ -166,9 +166,13 @@ input, textarea, select { font-family: 'Segoe UI', sans-serif; font-size: 14px; 
 <script type="text/babel">
 const { useState, useEffect, useRef, useCallback, useMemo } = React;
 
-const STORAGE_KEY = 'familyTree_v1';
-const PW_KEY      = 'familyTree_pw';
-const NAME_KEY    = 'familyTree_name';
+const STORAGE_KEY  = 'familyTree_v1';
+const PW_KEY       = 'familyTree_pw';
+const NAME_KEY     = 'familyTree_name';
+const NICK_KEY     = 'familyTree_nick';
+
+// Global nickname toggle — module-level so displayName() reads it everywhere
+let _globalUseNick = sessionStorage.getItem(NICK_KEY) !== 'false';
 
 function generateId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
@@ -392,7 +396,7 @@ function PersonModal({ person, people, relationships, onSave, onDelete, onClose 
 const SUFFIXES = new Set(['jr','jr.','sr','sr.','ii','iii','iv','v','vi','esq','esq.','phd','md']);
 
 function displayName(p) {
-  if (p.nickname) {
+  if (_globalUseNick && p.nickname) {
     const parts = p.fullName.trim().split(/\s+/);
     const lastName = [...parts].reverse().find(w => !SUFFIXES.has(w.toLowerCase())) || '';
     return lastName ? `${p.nickname} ${lastName}` : p.nickname;
@@ -535,7 +539,7 @@ function getConnected(personId, relationships) {
   return result;
 }
 
-function SphereNode({ x, y, person, isCenter, isFocused, onClick, useNick = false }) {
+function SphereNode({ x, y, person, isCenter, isFocused, onClick }) {
   const NW = 140, NH = 62;
   function trunc(s, n) { return s && s.length > n ? s.slice(0, n) + '…' : (s || ''); }
   const fill   = isCenter  ? '#8b6914' : isFocused ? '#f5edd8' : '#fffdf9';
@@ -544,7 +548,7 @@ function SphereNode({ x, y, person, isCenter, isFocused, onClick, useNick = fals
   const nameColor  = isCenter ? '#fff'     : '#8b6914';
   const subColor   = isCenter ? '#f5dfa0'  : '#7a6e5a';
   const placeColor = isCenter ? '#e8cc80'  : '#aaa';
-  const label = useNick ? displayName(person) : person.fullName;
+  const label = displayName(person);
   return (
     <g className="tree-node" onClick={onClick} transform={`translate(${x - NW/2},${y - NH/2})`} style={{cursor:'pointer'}}>
       <rect width={NW} height={NH} rx={9} fill={fill} stroke={stroke} strokeWidth={sWidth}
@@ -568,7 +572,6 @@ function TreeView({ people, relationships, onEdit, onAdd }) {
     return tk?.id || people[0]?.id || null;
   });
   const [history, setHistory] = useState([]);
-  const [useNick, setUseNick] = useState(true);
   const [sideSort, setSideSort] = useState('first');
 
   // Sync centerId if people list changes (e.g. after import)
@@ -701,11 +704,6 @@ function TreeView({ people, relationships, onEdit, onAdd }) {
               onClick={onAdd}>+ Add Person</button>
             <button className="btn btn-secondary" style={{padding:'5px 12px',fontSize:13}}
               onClick={() => onEdit(center)}>Edit this person</button>
-            <button className="btn btn-secondary" style={{padding:'5px 12px',fontSize:13}}
-              onClick={() => setUseNick(n => !n)}
-              title="Toggle between nickname and full name">
-              {useNick ? 'Full Names' : 'Nicknames'}
-            </button>
           </div>
         </div>
 
@@ -767,7 +765,7 @@ function TreeView({ people, relationships, onEdit, onAdd }) {
 
             {/* Center node */}
             <SphereNode x={CX} y={CY} person={center} isCenter={true}
-              onClick={() => onEdit(center)} useNick={useNick} />
+              onClick={() => onEdit(center)} />
 
             {/* Connected nodes */}
             {nodePositions.map(({ x, y, conn }, i) => {
@@ -775,7 +773,7 @@ function TreeView({ people, relationships, onEdit, onAdd }) {
               if (!p) return null;
               return (
                 <SphereNode key={conn.relId || i} x={x} y={y} person={p} isCenter={false} isFocused={true}
-                  onClick={() => navigateTo(p.id)} useNick={useNick} />
+                  onClick={() => navigateTo(p.id)} />
               );
             })}
           </svg>
@@ -1502,7 +1500,15 @@ function ChangeLogTab({ changeLog }) {
 function App() {
   const [password, setPassword] = useState(getStoredPw);
   const [userName, setUserName] = useState(getStoredName);
+  const [useNick,  setUseNickState] = useState(_globalUseNick);
   const [authed,   setAuthed]   = useState(false);
+
+  function toggleNick() {
+    const next = !_globalUseNick;
+    _globalUseNick = next;
+    sessionStorage.setItem(NICK_KEY, next ? 'true' : 'false');
+    setUseNickState(next);
+  }
   const [data, setDataRaw]      = useState(() => cacheLoad() || { people: [], relationships: [], changeLog: [] });
   const [syncStatus, setSyncStatus] = useState('offline');
   const [tab, setTab]     = useState('tree');
@@ -1545,8 +1551,11 @@ function App() {
   function signOut() {
     setStoredPw('');
     setStoredName('');
+    sessionStorage.removeItem(NICK_KEY);
+    _globalUseNick = true;
     setPassword('');
     setUserName('');
+    setUseNickState(true);
     setAuthed(false);
   }
 
@@ -1643,6 +1652,10 @@ function App() {
         <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:6,paddingBottom:2,flexWrap:'wrap'}}>
           <SyncBadge status={syncStatus} />
           {userName && <span style={{fontSize:12, color:'var(--text-muted)'}}>👤 {userName}</span>}
+          <button className="btn btn-secondary" style={{padding:'4px 10px', fontSize:12}}
+            onClick={toggleNick} title="Toggle nickname/full name display">
+            {useNick ? 'Full Names' : 'Nicknames'}
+          </button>
           <button className="btn btn-secondary" style={{padding:'4px 10px',fontSize:12}}
             onClick={signOut} title="Sign out">Sign out</button>
         </div>
