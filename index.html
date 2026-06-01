@@ -1147,140 +1147,28 @@ ${surnameBlocks}`;
 }
 
 function StoryTab({ people, relationships, password }) {
-  const [apiKey, setApiKey]           = useState(() => localStorage.getItem('ft_apikey') || '');
-  const [story, setStory]             = useState(() => localStorage.getItem('ft_story') || '');
-  const [customPrompt, setCustomPrompt] = useState(() => localStorage.getItem('ft_customprompt') || '');
-  const [loading, setLoading]         = useState(false);
-  const [error, setError]             = useState('');
-  const [copied, setCopied]           = useState(false);
-
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem('ft_apikey') || '');
   useEffect(() => { localStorage.setItem('ft_apikey', apiKey); }, [apiKey]);
-  useEffect(() => { localStorage.setItem('ft_story', story); }, [story]);
-  useEffect(() => { localStorage.setItem('ft_customprompt', customPrompt); }, [customPrompt]);
-
-  function buildFamilyData() {
-    const pList = people.map(p => {
-      let s = p.fullName;
-      if (p.maidenName) s += ` (née ${p.maidenName})`;
-      if (p.birthYear) s += `, b.${p.birthYear}`;
-      if (p.deathYear) s += `, d.${p.deathYear}`;
-      if (p.birthPlace) s += `, from ${p.birthPlace}`;
-      if (p.occupation) s += `, ${p.occupation}`;
-      if (p.origin) s += ` (${p.origin})`;
-      if (p.notes) s += `. ${p.notes}`;
-      return s;
-    }).join('\n');
-    const pmap = {}; people.forEach(p => pmap[p.id] = p.fullName);
-    const rList = relationships.map(r =>
-      `${pmap[r.from]||'?'} is ${r.type.replace('-',' ')} ${pmap[r.to]||'?'}`
-    ).join('\n');
-    return { pList, rList };
-  }
-
-  function buildPrompt() {
-    const { pList, rList } = buildFamilyData();
-    const base = `Write a 500-word narrative family history in warm prose based on these family members and relationships. Write it as "Our Family Story" — engaging, heartfelt, connecting the generations. Do not use bullet points or lists.`;
-    const extra = customPrompt.trim()
-      ? `\n\nAdditional instructions: ${customPrompt.trim()}`
-      : '';
-    return `${base}${extra}\n\nFamily Members:\n${pList}\n\nRelationships:\n${rList}`;
-  }
-
-  async function generate() {
-    if (!apiKey) { setError('Please enter your API key'); return; }
-    if (people.length === 0) { setError('Add family members first'); return; }
-    setLoading(true); setError('');
-    try {
-      const res = await fetch('/api/story', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-password': password || '' },
-        body: JSON.stringify({ apiKey, prompt: buildPrompt() })
-      });
-      const data = await res.json();
-      if (data.error) setError(data.error); else setStory(data.story);
-    } catch (e) { setError('Failed to connect to server'); }
-    setLoading(false);
-  }
-
-  function copyStory() {
-    navigator.clipboard.writeText(story);
-    setCopied(true); setTimeout(() => setCopied(false), 2000);
-  }
-
-  const PROMPT_EXAMPLES = [
-    'Focus on the immigrant experience and what drove the family to move.',
-    'Write it as if being read aloud at a family reunion.',
-    'Emphasize the women in the family and their contributions.',
-    'Use a poetic, lyrical tone with vivid imagery.',
-    'Focus on the trades and occupations passed down through generations.',
-  ];
 
   return (
     <div>
       <ConnectionFinder people={people} relationships={relationships} apiKey={apiKey} password={password} />
       <FamilyChapters people={people} relationships={relationships} apiKey={apiKey} password={password} />
-      <h3 style={{color:'var(--accent)',marginBottom:6}}>Our Family Story</h3>
-      <p style={{color:'var(--text-muted)',fontSize:13,marginBottom:14}}>
-        AI generates a narrative family history from your data. Uses Claude Haiku — ~$0.001 per story.
-      </p>
 
-      {/* API Key */}
-      <div style={{marginBottom:12}}>
+      {/* API Key — kept here so it persists for all AI features on this tab */}
+      <div style={{marginTop:8, padding:'12px 16px', background:'var(--warm-bg)',
+        border:'1px solid var(--border)', borderRadius:8}}>
         <label style={{display:'block',fontSize:13,fontWeight:600,color:'var(--text-muted)',marginBottom:4}}>
           Anthropic API Key
           <span style={{fontWeight:400,fontStyle:'italic',marginLeft:6}}>
             (leave blank if ANTHROPIC_API_KEY is set in Vercel env vars)
           </span>
         </label>
-        <input type="password" placeholder="sk-ant-... or leave blank if configured on server" value={apiKey} onChange={e => setApiKey(e.target.value)}
-          style={{width:'100%',padding:'8px 12px',border:'1px solid var(--border)',borderRadius:6,background:'var(--warm-bg)'}} />
+        <input type="password" placeholder="sk-ant-... or leave blank if configured on server"
+          value={apiKey} onChange={e => setApiKey(e.target.value)}
+          style={{width:'100%',padding:'8px 12px',border:'1px solid var(--border)',borderRadius:6,background:'var(--card-bg)'}} />
       </div>
 
-      {/* Custom prompt */}
-      <div style={{marginBottom:12}}>
-        <label style={{display:'block',fontSize:13,fontWeight:600,color:'var(--text-muted)',marginBottom:4}}>
-          Story Style / Custom Instructions <span style={{fontWeight:400,fontStyle:'italic'}}>(optional)</span>
-        </label>
-        <textarea
-          placeholder="e.g. Write it as if being read at a family reunion. Focus on the immigrant experience. Use a poetic tone..."
-          value={customPrompt} onChange={e => setCustomPrompt(e.target.value)}
-          style={{width:'100%',minHeight:72,padding:'8px 12px',border:'1px solid var(--border)',borderRadius:6,
-            background:'var(--warm-bg)',resize:'vertical',fontSize:13,fontFamily:'inherit'}} />
-        <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:6}}>
-          {PROMPT_EXAMPLES.map((ex, i) => (
-            <button key={i} onClick={() => setCustomPrompt(ex)}
-              style={{fontSize:11,padding:'3px 9px',border:'1px solid var(--border)',borderRadius:20,
-                background:'var(--warm-bg)',cursor:'pointer',color:'var(--text-muted)'}}>
-              {ex.slice(0, 38)}…
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Actions */}
-      <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',marginBottom:8}}>
-        <button className="btn btn-primary" onClick={generate} disabled={loading}>
-          {loading ? 'Generating…' : story ? '↺ Regenerate Story' : '✦ Generate Our Story'}
-        </button>
-        {story && (
-          <button className="btn btn-secondary" onClick={copyStory}>
-            {copied ? '✓ Copied!' : 'Copy Story'}
-          </button>
-        )}
-        {story && (
-          <button className="btn btn-secondary" onClick={() => setStory('')}
-            style={{marginLeft:'auto',fontSize:12,padding:'5px 10px'}}>Clear</button>
-        )}
-      </div>
-
-      {error && <p style={{color:'var(--danger)',marginBottom:8,fontSize:14}}>{error}</p>}
-
-      {story
-        ? <div className="story-area">{story}</div>
-        : <div className="story-area" style={{color:'var(--text-muted)',textAlign:'center',paddingTop:60,fontStyle:'italic'}}>
-            Your family story will appear here…
-          </div>
-      }
     </div>
   );
 }
