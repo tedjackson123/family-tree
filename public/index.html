@@ -168,6 +168,7 @@ const { useState, useEffect, useRef, useCallback, useMemo } = React;
 
 const STORAGE_KEY = 'familyTree_v1';
 const PW_KEY      = 'familyTree_pw';
+const NAME_KEY    = 'familyTree_name';
 
 function generateId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
@@ -180,9 +181,11 @@ function cacheSave(data) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch {}
 }
 
-// Password helpers — sessionStorage so it clears when the tab closes
-function getStoredPw() { return sessionStorage.getItem(PW_KEY) || ''; }
+// Password + name helpers — sessionStorage clears when tab closes
+function getStoredPw()   { return sessionStorage.getItem(PW_KEY)   || ''; }
 function setStoredPw(pw) { if (pw) sessionStorage.setItem(PW_KEY, pw); else sessionStorage.removeItem(PW_KEY); }
+function getStoredName()     { return sessionStorage.getItem(NAME_KEY) || ''; }
+function setStoredName(name) { if (name) sessionStorage.setItem(NAME_KEY, name); else sessionStorage.removeItem(NAME_KEY); }
 
 // Cloud API — always sends password header
 async function cloudLoad(pw) {
@@ -211,19 +214,22 @@ function cloudSave(data, pw, onStatus) {
 
 // ── Login Screen ──────────────────────────────────────────────────────────────
 function Login({ onLogin }) {
+  const [name, setName]   = useState(getStoredName);
   const [pw, setPw]       = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   async function submit(e) {
     e.preventDefault();
-    if (!pw.trim()) return;
+    if (!name.trim()) { setError('Please enter your name.'); return; }
+    if (!pw.trim())   { setError('Please enter the family password.'); return; }
     setLoading(true); setError('');
     try {
       const data = await cloudLoad(pw.trim());
       cacheSave(data);
       setStoredPw(pw.trim());
-      onLogin(pw.trim(), data);
+      setStoredName(name.trim());
+      onLogin(pw.trim(), name.trim(), data);
     } catch (err) {
       setError(err.code === 401
         ? 'Incorrect password — please try again.'
@@ -238,11 +244,15 @@ function Login({ onLogin }) {
         <h1>Our Family Tree</h1>
         <p>Preserving our heritage, one generation at a time</p>
         <form onSubmit={submit}>
+          <input type="text" placeholder="Your name" value={name}
+            onChange={e => { setName(e.target.value); setError(''); }}
+            autoFocus autoComplete="name"
+            style={{marginBottom:8}} />
           <input type="password" placeholder="Family password" value={pw}
             onChange={e => { setPw(e.target.value); setError(''); }}
-            autoFocus autoComplete="current-password" />
+            autoComplete="current-password" />
           {error && <div className="login-error">{error}</div>}
-          <button className="btn btn-primary" style={{width:'100%',padding:'12px',marginTop:4}} disabled={loading}>
+          <button className="btn btn-primary" style={{width:'100%',padding:'12px',marginTop:8}} disabled={loading}>
             {loading ? 'Connecting…' : 'Enter Family Tree'}
           </button>
         </form>
@@ -1138,10 +1148,70 @@ function ShareTab({ data, onImport }) {
   );
 }
 
+// ── Change Log Tab ────────────────────────────────────────────────────────────
+function ChangeLogTab({ changeLog }) {
+  if (!changeLog || changeLog.length === 0) return (
+    <div className="empty-state">
+      <h3>No changes recorded yet</h3>
+      <p>Changes will appear here after family members add or edit people.</p>
+    </div>
+  );
+
+  const entries = [...changeLog].reverse(); // newest first
+
+  function formatDate(iso) {
+    try {
+      const d = new Date(iso);
+      return d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' })
+        + ' at ' + d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+    } catch { return iso; }
+  }
+
+  const actionColors = {
+    added:    { bg:'#f0f7ef', border:'#c3dbbf', color:'#4a7c3f' },
+    updated:  { bg:'#fdf6e8', border:'#e8d5a3', color:'#8b6914' },
+    deleted:  { bg:'#fdf0ee', border:'#f0c4bb', color:'#b5442e' },
+    imported: { bg:'#eef4fb', border:'#b3cde8', color:'#2a6099' },
+  };
+
+  return (
+    <div>
+      <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
+        <h3 style={{color:'var(--accent)'}}>Change Log</h3>
+        <span style={{fontSize:13, color:'var(--text-muted)'}}>{changeLog.length} change{changeLog.length !== 1 ? 's' : ''} recorded</span>
+      </div>
+      <div style={{display:'flex', flexDirection:'column', gap:8}}>
+        {entries.map(entry => {
+          const style = actionColors[entry.action] || actionColors.updated;
+          return (
+            <div key={entry.id} style={{display:'flex', gap:12, alignItems:'flex-start',
+              background:'var(--card-bg)', border:'1px solid var(--border)',
+              borderRadius:8, padding:'12px 14px'}}>
+              <span style={{fontSize:11, fontWeight:700, padding:'3px 9px', borderRadius:20,
+                background:style.bg, border:`1px solid ${style.border}`, color:style.color,
+                whiteSpace:'nowrap', marginTop:1, textTransform:'uppercase', letterSpacing:'0.5px'}}>
+                {entry.action}
+              </span>
+              <div style={{flex:1}}>
+                <div style={{fontSize:14, color:'var(--text)', fontWeight:600}}>{entry.description}</div>
+                <div style={{fontSize:12, color:'var(--text-muted)', marginTop:3}}>
+                  <strong style={{color:'var(--accent)'}}>{entry.changedBy}</strong>
+                  {' · '}{formatDate(entry.timestamp)}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [password, setPassword] = useState(getStoredPw);
+  const [userName, setUserName] = useState(getStoredName);
   const [authed,   setAuthed]   = useState(false);
-  const [data, setDataRaw]      = useState(() => cacheLoad() || { people: [], relationships: [] });
+  const [data, setDataRaw]      = useState(() => cacheLoad() || { people: [], relationships: [], changeLog: [] });
   const [syncStatus, setSyncStatus] = useState('offline');
   const [tab, setTab]     = useState('tree');
   const [editing, setEditing] = useState(null);
@@ -1171,8 +1241,9 @@ function App() {
       });
   }, []);
 
-  function handleLogin(pw, cloudData) {
+  function handleLogin(pw, name, cloudData) {
     setPassword(pw);
+    setUserName(name);
     setDataRaw(cloudData);
     cacheSave(cloudData);
     setAuthed(true);
@@ -1181,7 +1252,9 @@ function App() {
 
   function signOut() {
     setStoredPw('');
+    setStoredName('');
     setPassword('');
+    setUserName('');
     setAuthed(false);
   }
 
@@ -1217,21 +1290,31 @@ function App() {
     }
   }
 
+  function makeLogEntry(action, description) {
+    return { id: generateId(), action, description, changedBy: userName || 'Unknown', timestamp: new Date().toISOString() };
+  }
+
   function savePerson(person, rels) {
-    const next = (() => {
-      const people = data.people.filter(p => p.id !== person.id).concat(person);
-      const otherRels = data.relationships.filter(r => r.from !== person.id && r.to !== person.id);
-      return { people, relationships: [...otherRels, ...rels] };
-    })();
+    const isNew = !data.people.find(p => p.id === person.id);
+    const action = isNew ? 'added' : 'updated';
+    const description = isNew ? `Added ${person.fullName}` : `Updated ${person.fullName}`;
+    const people = data.people.filter(p => p.id !== person.id).concat(person);
+    const otherRels = data.relationships.filter(r => r.from !== person.id && r.to !== person.id);
+    const changeLog = [...(data.changeLog || []), makeLogEntry(action, description)].slice(-200);
+    const next = { people, relationships: [...otherRels, ...rels], changeLog };
     setDataRaw(next);
     setEditing(null);
     saveAndRefresh(next);
   }
 
   function deletePerson(id) {
+    const person = data.people.find(p => p.id === id);
+    const description = `Deleted ${person?.fullName || 'unknown person'}`;
+    const changeLog = [...(data.changeLog || []), makeLogEntry('deleted', description)].slice(-200);
     const next = {
       people: data.people.filter(p => p.id !== id),
-      relationships: data.relationships.filter(r => r.from !== id && r.to !== id)
+      relationships: data.relationships.filter(r => r.from !== id && r.to !== id),
+      changeLog
     };
     setDataRaw(next);
     setEditing(null);
@@ -1262,11 +1345,12 @@ function App() {
         <p>Preserving our heritage, one generation at a time</p>
       </div>
       <div className="tabs">
-        {[['people','People'],['tree','Tree View'],['story','Our Story'],['share','Save & Share']].map(([k,l]) =>
+        {[['people','People'],['tree','Tree View'],['story','Our Story'],['share','Save & Share'],['log','Change Log']].map(([k,l]) =>
           <button key={k} className={`tab ${tab===k?'active':''}`} onClick={() => setTab(k)}>{l}</button>
         )}
         <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:6,paddingBottom:2,flexWrap:'wrap'}}>
           <SyncBadge status={syncStatus} />
+          {userName && <span style={{fontSize:12, color:'var(--text-muted)'}}>👤 {userName}</span>}
           <button className="btn btn-secondary" style={{padding:'4px 10px',fontSize:12}}
             onClick={signOut} title="Sign out">Sign out</button>
         </div>
@@ -1277,7 +1361,11 @@ function App() {
         {tab === 'tree' && <TreeView people={data.people} relationships={data.relationships}
           onEdit={p => setEditing(p)} onAdd={() => setEditing({})} />}
         {tab === 'story' && <StoryTab people={data.people} relationships={data.relationships} password={password} />}
-        {tab === 'share' && <ShareTab data={data} onImport={d => setData(d)} />}
+        {tab === 'share' && <ShareTab data={data} onImport={d => {
+          const changeLog = [...(data.changeLog || []), makeLogEntry('imported', 'Imported family tree data')].slice(-200);
+          setData({ ...d, changeLog });
+        }} />}
+        {tab === 'log'   && <ChangeLogTab changeLog={data.changeLog} />}
       </div>
       {editing && <PersonModal person={editing} people={data.people} relationships={data.relationships}
         onSave={savePerson} onDelete={deletePerson} onClose={() => setEditing(null)} />}
