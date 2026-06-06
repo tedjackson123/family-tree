@@ -159,6 +159,73 @@ input, textarea, select { font-family: 'Segoe UI', sans-serif; font-size: 14px; 
 .tree-node { cursor: pointer; }
 .tree-node rect { transition: all 0.2s; }
 .tree-node:hover rect { filter: brightness(0.95); stroke: var(--accent); stroke-width: 2; }
+
+/* ── Mobile Tree View ───────────────────────────────────────────────── */
+.mob-wrap { display: flex; flex-direction: column; height: 100vh; background: var(--warm-bg);
+  position: fixed; inset: 0; z-index: 10; overflow: hidden; }
+.mob-header { background: var(--accent); color: white; padding: 12px 16px;
+  display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.mob-header h2 { font-size: 1.1em; letter-spacing: 0.5px; }
+.mob-header-right { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.mob-back { background: rgba(255,255,255,0.2); border: none; color: white;
+  padding: 6px 14px; border-radius: 20px; font-size: 13px; font-family: inherit; }
+
+.mob-tree { flex: 1; display: flex; flex-direction: column; padding: 16px 12px;
+  gap: 0; overflow: hidden; justify-content: center; }
+
+.mob-row { display: flex; gap: 10px; justify-content: center;
+  overflow-x: auto; padding: 4px 8px; -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; flex-shrink: 0; }
+.mob-row::-webkit-scrollbar { display: none; }
+
+.mob-connector { display: flex; justify-content: center; align-items: center;
+  height: 28px; flex-shrink: 0; }
+.mob-connector-line { width: 2px; height: 100%; background: var(--accent-light); opacity: 0.5; }
+.mob-connector-row { display: flex; width: 100%; justify-content: center; align-items: center; gap: 0; }
+
+/* Parent / child cards */
+.mob-card { background: var(--card-bg); border: 1.5px solid var(--border); border-radius: 12px;
+  padding: 12px 14px; min-width: 130px; max-width: 160px; flex-shrink: 0;
+  cursor: pointer; text-align: center; transition: all 0.15s; -webkit-tap-highlight-color: transparent; }
+.mob-card:active { transform: scale(0.96); border-color: var(--accent-light); }
+.mob-card-name { font-size: 14px; font-weight: 700; color: var(--accent); line-height: 1.3; }
+.mob-card-year { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+.mob-card-role { font-size: 11px; color: var(--text-muted); margin-top: 2px; font-style: italic; }
+
+/* Center card */
+.mob-center-card { background: var(--accent); border: 2.5px solid #6d5310; border-radius: 14px;
+  padding: 16px 20px; min-width: 180px; max-width: 220px; flex-shrink: 0;
+  cursor: pointer; text-align: center; transition: all 0.15s; -webkit-tap-highlight-color: transparent;
+  box-shadow: 0 4px 16px rgba(139,105,20,0.25); }
+.mob-center-card:active { transform: scale(0.97); }
+.mob-center-name { font-size: 16px; font-weight: 700; color: white; line-height: 1.3; }
+.mob-center-year { font-size: 13px; color: rgba(255,255,255,0.75); margin-top: 4px; }
+.mob-center-icons { display: flex; gap: 8px; justify-content: center; margin-top: 10px; flex-wrap: wrap; }
+.mob-icon-chip { background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.3);
+  border-radius: 20px; padding: 4px 10px; font-size: 12px; color: white; white-space: nowrap; }
+
+/* Detail sheet */
+.mob-sheet-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 100;
+  display: flex; align-items: flex-end; }
+.mob-sheet { background: var(--card-bg); border-radius: 20px 20px 0 0; width: 100%;
+  max-height: 78vh; overflow-y: auto; padding: 20px; box-shadow: 0 -4px 24px rgba(0,0,0,0.15);
+  animation: slideUp 0.25s ease-out; }
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+.mob-sheet-handle { width: 40px; height: 4px; background: var(--border); border-radius: 2px;
+  margin: 0 auto 16px; }
+.mob-sheet-name { font-size: 1.3em; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
+.mob-sheet-detail { font-size: 14px; color: var(--text-muted); margin-top: 4px; line-height: 1.6; }
+.mob-sheet-section { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
+.mob-sheet-section h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--text-muted); margin-bottom: 8px; }
+.mob-person-chip { display: inline-flex; align-items: center; background: var(--warm-bg);
+  border: 1px solid var(--accent-light); border-radius: 20px; padding: 6px 14px;
+  font-size: 14px; color: var(--accent); font-weight: 600; margin: 3px;
+  cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.mob-person-chip:active { background: var(--accent); color: white; }
+.mob-close-btn { width: 100%; margin-top: 16px; padding: 13px; background: var(--warm-bg);
+  border: 1.5px solid var(--border); border-radius: 10px; font-size: 15px;
+  color: var(--text-muted); font-family: inherit; }
 </style>
 </head>
 <body>
@@ -1497,6 +1564,238 @@ function ChangeLogTab({ changeLog }) {
   );
 }
 
+// ── Mobile Tree View ─────────────────────────────────────────────────────────
+function MobileTreeView({ people, relationships }) {
+  const personMap = useMemo(() => { const m={}; people.forEach(p=>m[p.id]=p); return m; }, [people]);
+
+  const defaultId = useMemo(() => {
+    const tk = people.find(p => p.fullName.toLowerCase().includes('tk jackson') || p.fullName.toLowerCase().includes('t.k. jackson'));
+    return tk?.id || people[0]?.id || null;
+  }, [people]);
+
+  const [centerId, setCenterId] = useState(defaultId);
+  const [history,  setHistory]  = useState([]);
+  const [sheet,    setSheet]    = useState(null); // person object shown in detail sheet
+
+  useEffect(() => {
+    if (!centerId && people.length > 0) setCenterId(people[0].id);
+  }, [people]);
+
+  function getConnected(personId) {
+    const result = { parents:[], children:[], spouses:[], siblings:[] };
+    relationships.forEach(r => {
+      const flip = {'parent-of':'child-of','child-of':'parent-of','spouse-of':'spouse-of','sibling-of':'sibling-of'};
+      if (r.from === personId) {
+        const type = r.type;
+        const other = personMap[r.to];
+        if (!other) return;
+        if (type === 'parent-of')  result.children.push(other);
+        if (type === 'child-of')   result.parents.push(other);
+        if (type === 'spouse-of')  result.spouses.push(other);
+        if (type === 'sibling-of') result.siblings.push(other);
+      } else if (r.to === personId) {
+        const type = flip[r.type] || r.type;
+        const other = personMap[r.from];
+        if (!other) return;
+        if (type === 'parent-of')  result.children.push(other);
+        if (type === 'child-of')   result.parents.push(other);
+        if (type === 'spouse-of')  result.spouses.push(other);
+        if (type === 'sibling-of') result.siblings.push(other);
+      }
+    });
+    return result;
+  }
+
+  function navigateTo(id) {
+    if (!id || id === centerId) return;
+    setHistory(h => [...h, centerId]);
+    setCenterId(id);
+    setSheet(null);
+  }
+
+  function goBack() {
+    if (history.length === 0) return;
+    const prev = history[history.length - 1];
+    setHistory(h => h.slice(0, -1));
+    setCenterId(prev);
+    setSheet(null);
+  }
+
+  if (people.length === 0) return (
+    <div className="mob-wrap" style={{justifyContent:'center', alignItems:'center'}}>
+      <div style={{textAlign:'center', color:'var(--text-muted)', padding:32}}>
+        <div style={{fontSize:48, marginBottom:12}}>🌳</div>
+        <div style={{fontSize:16}}>No family members yet.</div>
+        <div style={{fontSize:13, marginTop:4}}>Add people on the desktop to get started.</div>
+      </div>
+    </div>
+  );
+
+  const center = personMap[centerId];
+  if (!center) return null;
+  const conn = getConnected(centerId);
+
+  function MobCard({ person, role }) {
+    return (
+      <div className="mob-card" onClick={() => navigateTo(person.id)}>
+        <div className="mob-card-name">{displayName(person)}</div>
+        {person.birthYear && <div className="mob-card-year">{person.birthYear}{person.deathYear ? ` – ${person.deathYear}` : ''}</div>}
+        {role && <div className="mob-card-role">{role}</div>}
+      </div>
+    );
+  }
+
+  function ConnectorLines({ count }) {
+    if (count === 0) return <div style={{height:28}} />;
+    return (
+      <div className="mob-connector">
+        <div className="mob-connector-line" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="mob-wrap">
+      {/* Header */}
+      <div className="mob-header">
+        <div>
+          <div className="mob-header" style={{padding:0, background:'transparent', justifyContent:'flex-start', gap:10}}>
+            {history.length > 0 && (
+              <button className="mob-back" onClick={goBack}>← Back</button>
+            )}
+            <h2>Our Family Tree</h2>
+          </div>
+        </div>
+        <div className="mob-header-right">
+          <span style={{opacity:0.7}}>{people.length} members</span>
+        </div>
+      </div>
+
+      {/* Three-row tree */}
+      <div className="mob-tree">
+
+        {/* Parents row */}
+        {conn.parents.length > 0 ? (
+          <>
+            <div className="mob-row">
+              {conn.parents.map(p => <MobCard key={p.id} person={p} role="parent" />)}
+            </div>
+            <ConnectorLines count={conn.parents.length} />
+          </>
+        ) : (
+          <div style={{height:60, display:'flex', alignItems:'center', justifyContent:'center'}}>
+            <span style={{fontSize:12, color:'var(--border)'}}>no parents recorded</span>
+          </div>
+        )}
+
+        {/* Center person */}
+        <div className="mob-row">
+          <div className="mob-center-card" onClick={() => setSheet(center)}>
+            <div className="mob-center-name">{displayName(center)}</div>
+            {center.birthYear && (
+              <div className="mob-center-year">
+                {center.birthYear}{center.deathYear ? ` – ${center.deathYear}` : ''}
+              </div>
+            )}
+            <div className="mob-center-icons">
+              {conn.spouses.length > 0 && (
+                <span className="mob-icon-chip">
+                  💑 {conn.spouses.length === 1 ? displayName(conn.spouses[0]).split(' ')[0] : `${conn.spouses.length} spouses`}
+                </span>
+              )}
+              {conn.siblings.length > 0 && (
+                <span className="mob-icon-chip">
+                  👥 {conn.siblings.length} sibling{conn.siblings.length !== 1 ? 's' : ''}
+                </span>
+              )}
+              {conn.spouses.length === 0 && conn.siblings.length === 0 && (
+                <span className="mob-icon-chip">tap for details</span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Connector to children */}
+        {conn.children.length > 0 && <ConnectorLines count={conn.children.length} />}
+
+        {/* Children row */}
+        {conn.children.length > 0 ? (
+          <div className="mob-row">
+            {conn.children.map(p => <MobCard key={p.id} person={p} role="child" />)}
+          </div>
+        ) : (
+          <div style={{height:60, display:'flex', alignItems:'center', justifyContent:'center'}}>
+            <span style={{fontSize:12, color:'var(--border)'}}>no children recorded</span>
+          </div>
+        )}
+
+      </div>
+
+      {/* Hint */}
+      <div style={{textAlign:'center', padding:'8px 0 16px', fontSize:12, color:'var(--text-muted)', flexShrink:0}}>
+        Tap any card to navigate · Tap center for details
+      </div>
+
+      {/* Detail sheet */}
+      {sheet && (
+        <div className="mob-sheet-overlay" onClick={() => setSheet(null)}>
+          <div className="mob-sheet" onClick={e => e.stopPropagation()}>
+            <div className="mob-sheet-handle" />
+            <div className="mob-sheet-name">{sheet.fullName}</div>
+            {sheet.nickname && <div style={{fontSize:14, color:'var(--text-muted)', fontStyle:'italic'}}>"{sheet.nickname}"</div>}
+            {sheet.maidenName && <div className="mob-sheet-detail">née {sheet.maidenName}</div>}
+
+            {/* Bio details */}
+            <div style={{marginTop:10, display:'flex', flexDirection:'column', gap:4}}>
+              {(sheet.birthYear || sheet.birthPlace) && (
+                <div className="mob-sheet-detail">
+                  🎂 {[sheet.birthYear, sheet.birthPlace].filter(Boolean).join(' · ')}
+                  {sheet.deathYear && ` – ${sheet.deathYear}`}
+                </div>
+              )}
+              {sheet.occupation && <div className="mob-sheet-detail">💼 {sheet.occupation}</div>}
+              {sheet.origin && <div className="mob-sheet-detail">🌍 {sheet.origin}</div>}
+              {sheet.notes && <div className="mob-sheet-detail" style={{marginTop:6, fontStyle:'italic'}}>{sheet.notes}</div>}
+            </div>
+
+            {/* Spouses */}
+            {conn.spouses.length > 0 && (
+              <div className="mob-sheet-section">
+                <h4>💑 Spouse{conn.spouses.length !== 1 ? 's' : ''}</h4>
+                <div>
+                  {conn.spouses.map(p => (
+                    <span key={p.id} className="mob-person-chip"
+                      onClick={() => navigateTo(p.id)}>
+                      {displayName(p)}{p.birthYear ? ` (${p.birthYear})` : ''}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Siblings */}
+            {conn.siblings.length > 0 && (
+              <div className="mob-sheet-section">
+                <h4>👥 Sibling{conn.siblings.length !== 1 ? 's' : ''}</h4>
+                <div>
+                  {conn.siblings.map(p => (
+                    <span key={p.id} className="mob-person-chip"
+                      onClick={() => navigateTo(p.id)}>
+                      {displayName(p)}{p.birthYear ? ` (${p.birthYear})` : ''}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <button className="mob-close-btn" onClick={() => setSheet(null)}>Close</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function App() {
   const [password, setPassword] = useState(getStoredPw);
   const [userName, setUserName] = useState(getStoredName);
@@ -1635,9 +1934,11 @@ function App() {
     return () => clearInterval(interval);
   }, [authed, password]);
 
-  // Show login if we have a password env var in use (401 would have cleared it)
-  // but not yet authenticated this session
   if (!authed) return <Login onLogin={handleLogin} />;
+
+  // Mobile: phone-width gets the dedicated tree view, no tabs
+  const isMobile = window.innerWidth < 768;
+  if (isMobile) return <MobileTreeView people={data.people} relationships={data.relationships} />;
 
   return (
     <div className="app">
