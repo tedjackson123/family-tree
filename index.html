@@ -1505,6 +1505,253 @@ function RefineTab({ people, relationships, password, apiKey, onAddPerson, onUpd
   );
 }
 
+// ── Print ─────────────────────────────────────────────────────────────────────
+
+function findAncestorPath(fromId, toId, people, relationships) {
+  // BFS through parent-of / child-of only — no spouse or sibling hops
+  const adj = {};
+  people.forEach(p => { adj[p.id] = []; });
+  relationships.forEach(r => {
+    if (r.type === 'parent-of') {
+      if (adj[r.from]) adj[r.from].push({ otherId: r.to, type: 'parent-of' });
+      if (adj[r.to])   adj[r.to].push({   otherId: r.from, type: 'child-of'  });
+    } else if (r.type === 'child-of') {
+      if (adj[r.from]) adj[r.from].push({ otherId: r.to, type: 'child-of'  });
+      if (adj[r.to])   adj[r.to].push({   otherId: r.from, type: 'parent-of' });
+    }
+  });
+  const visited = new Set([fromId]);
+  const queue = [{ id: fromId, path: [{ personId: fromId }] }];
+  while (queue.length > 0) {
+    const { id, path } = queue.shift();
+    for (const { otherId, type } of (adj[id] || [])) {
+      if (visited.has(otherId)) continue;
+      visited.add(otherId);
+      const newPath = [...path, { type, personId: otherId }];
+      if (otherId === toId) return newPath;
+      queue.push({ id: otherId, path: newPath });
+    }
+  }
+  return null;
+}
+
+function buildPrintHTML(path, people, relationships, orientation) {
+  const pmap = {}; people.forEach(p => { pmap[p.id] = p; });
+
+  function getSpouses(id) {
+    return relationships
+      .filter(r => r.type === 'spouse-of' && (r.from === id || r.to === id))
+      .map(r => pmap[r.from === id ? r.to : r.from]).filter(Boolean);
+  }
+  function getChildren(parentId) {
+    const ids = new Set();
+    relationships.forEach(r => {
+      if (r.type === 'parent-of' && r.from === parentId) ids.add(r.to);
+      if (r.type === 'child-of'  && r.to === parentId)   ids.add(r.from);
+    });
+    return [...ids].map(id => pmap[id]).filter(Boolean);
+  }
+  function getSiblings(personId, parentId) {
+    if (!parentId) return [];
+    return getChildren(parentId).filter(p => p.id !== personId);
+  }
+
+  function personBoxHTML(p, role) {
+    const isPath   = role === 'path';
+    const isSpouse = role === 'spouse';
+    const years = p.birthYear
+      ? `${p.birthYear}${p.deathYear ? ` – ${p.deathYear}` : ' – present'}`
+      : (p.deathYear ? `? – ${p.deathYear}` : '');
+    const extras = [p.birthPlace, p.occupation].filter(Boolean);
+    const bg     = isPath ? '#fdf6e8' : isSpouse ? '#eef2fb' : '#f9f7f3';
+    const border = isPath ? '2px solid #8b6914' : '1px solid #d0c9ba';
+    const nameSize = isPath ? '13px' : '11px';
+    const nameColor = isPath ? '#6d5310' : '#3a2e1a';
+    const roleLabel = isSpouse ? '<div style="font-size:9px;color:#8888aa;margin-top:1px;letter-spacing:0.3px">SPOUSE</div>' : '';
+    return `<div style="display:inline-block;border:${border};border-radius:8px;padding:8px 10px;
+      background:${bg};min-width:110px;max-width:155px;text-align:center;vertical-align:middle;margin:2px;">
+      <div style="font-size:${nameSize};font-weight:700;color:${nameColor};line-height:1.3;font-family:Georgia,serif">${p.fullName}</div>
+      ${years ? `<div style="font-size:10px;color:#7a6e5a;margin-top:2px">${years}</div>` : ''}
+      ${extras.map(e => `<div style="font-size:9px;color:#9a8e7a;margin-top:1px">${e}</div>`).join('')}
+      ${roleLabel}
+    </div>`;
+  }
+
+  // Build rows: each step in path = one generation row
+  const GENS_PER_PAGE = 5;
+  let html = '';
+  path.forEach((step, i) => {
+    const person  = pmap[step.personId]; if (!person) return;
+    const prevId  = i > 0 ? path[i-1].personId : null;
+    const siblings = getSiblings(person.id, prevId).slice(0, 4);
+    const spouses  = getSpouses(person.id).slice(0, 2);
+    const isLast   = i === path.length - 1;
+    const pageBreakBefore = i > 0 && i % GENS_PER_PAGE === 0;
+
+    if (pageBreakBefore) {
+      const prevPerson = pmap[path[i-1].personId];
+      html += `<div style="page-break-before:always;padding-top:16px;">
+        <div style="font-size:10px;color:#aaa;text-align:center;margin-bottom:12px;font-style:italic">
+          ← Continued from previous page &nbsp;·&nbsp; ${prevPerson?.fullName || ''}
+        </div>`;
+    }
+
+    // Connector from previous row
+    if (i > 0 && !pageBreakBefore) {
+      html += `<div style="text-align:center;line-height:0;padding:6px 0">
+        <div style="display:inline-block;width:2px;height:28px;background:#c9a84c;border-radius:1px"></div>
+      </div>`;
+    }
+
+    // Generation row
+    html += `<div style="text-align:center;padding:4px 0;page-break-inside:avoid">`;
+    // Siblings (left of path person)
+    siblings.slice(0, Math.ceil(siblings.length/2)).forEach(s => {
+      html += personBoxHTML(s, 'sibling');
+    });
+    // Path person
+    html += personBoxHTML(person, 'path');
+    // Remaining siblings (right of path person)
+    siblings.slice(Math.ceil(siblings.length/2)).forEach(s => {
+      html += personBoxHTML(s, 'sibling');
+    });
+    // Spouses
+    spouses.forEach(sp => {
+      html += `<span style="font-size:16px;color:#aaa;vertical-align:middle;margin:0 4px">+</span>`;
+      html += personBoxHTML(sp, 'spouse');
+    });
+    html += `</div>`;
+
+    // "Continued" footer before page break
+    if (!isLast && (i + 1) % GENS_PER_PAGE === 0) {
+      const nextPerson = pmap[path[i+1]?.personId];
+      html += `<div style="font-size:10px;color:#aaa;text-align:center;margin-top:12px;font-style:italic">
+        Continued on next page → &nbsp;·&nbsp; ${nextPerson?.fullName || ''}
+      </div>`;
+    }
+    if (pageBreakBefore) html += `</div>`;
+  });
+
+  const ancestorName    = pmap[path[0].personId]?.fullName || '';
+  const descendantName  = pmap[path[path.length-1].personId]?.fullName || '';
+  const genCount        = path.length - 1;
+  const today           = new Date().toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'});
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>Family Tree: ${ancestorName} to ${descendantName}</title>
+<style>
+  @page { size: ${orientation}; margin: 0.7in; }
+  body { font-family: Georgia, serif; background: white; color: #3a2e1a; margin: 0; }
+  h1 { text-align:center; color:#8b6914; font-size:20px; margin:0 0 4px; letter-spacing:1px; }
+  .sub { text-align:center; color:#7a6e5a; font-size:12px; font-style:italic; margin-bottom:6px; }
+  .legend { display:flex; gap:16px; justify-content:center; font-size:10px; color:#9a8e7a;
+    margin-bottom:20px; padding-bottom:12px; border-bottom:1px solid #e0d5c4; flex-wrap:wrap; }
+  .legend-box { display:inline-block; width:12px; height:12px; border-radius:3px;
+    vertical-align:middle; margin-right:4px; }
+</style>
+</head><body>
+<h1>Our Family Tree</h1>
+<div class="sub">${ancestorName} &rarr; ${descendantName} &nbsp;·&nbsp; ${genCount} generation${genCount!==1?'s':''} &nbsp;·&nbsp; Printed ${today}</div>
+<div class="legend">
+  <span><span class="legend-box" style="background:#fdf6e8;border:2px solid #8b6914"></span>Direct line</span>
+  <span><span class="legend-box" style="background:#eef2fb;border:1px solid #d0c9ba"></span>Spouse</span>
+  <span><span class="legend-box" style="background:#f9f7f3;border:1px solid #d0c9ba"></span>Sibling</span>
+</div>
+${html}
+</body></html>`;
+}
+
+function PrintModal({ people, relationships, onClose }) {
+  const [ancestorId,    setAncestorId]    = useState('');
+  const [descendantId,  setDescendantId]  = useState('');
+  const [orientation,   setOrientation]   = useState('landscape');
+  const [error,         setError]         = useState('');
+
+  function handlePrint() {
+    setError('');
+    if (!ancestorId || !descendantId) { setError('Please select both an ancestor and a descendant.'); return; }
+    if (ancestorId === descendantId)  { setError('Please select two different people.'); return; }
+    const path = findAncestorPath(ancestorId, descendantId, people, relationships);
+    if (!path) {
+      setError('No direct ancestor–descendant path found. Make sure these two people are connected through parent/child relationships.');
+      return;
+    }
+    // Verify direction: path should go from ancestor down to descendant
+    // If path goes up (child-of steps) it means ancestor/descendant are swapped — try reverse
+    const types = path.slice(1).map(s => s.type);
+    const goingDown = types.every(t => t === 'parent-of');
+    const goingUp   = types.every(t => t === 'child-of');
+    let finalPath = path;
+    if (goingUp) {
+      // Swap — user had ancestor and descendant reversed
+      const reversed = findAncestorPath(descendantId, ancestorId, people, relationships);
+      if (reversed) finalPath = reversed;
+    }
+    const html = buildPrintHTML(finalPath, people, relationships, orientation);
+    const win = window.open('', '_blank');
+    if (!win) { setError('Pop-up blocked. Please allow pop-ups for this site and try again.'); return; }
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 600);
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:520}}>
+        <h2>🖨 Print Family Tree</h2>
+        <p style={{fontSize:13, color:'var(--text-muted)', marginBottom:18, lineHeight:1.6}}>
+          Select an ancestor at the top and a descendant at the bottom. The app will print the direct lineage between them, showing siblings and spouses at each generation.
+        </p>
+
+        <div style={{display:'flex', flexDirection:'column', gap:14}}>
+          <div>
+            <label style={{display:'block', fontSize:13, fontWeight:600, color:'var(--text-muted)', marginBottom:5}}>
+              Ancestor (top of tree)
+            </label>
+            <SearchSelect people={people} value={ancestorId} onChange={setAncestorId} placeholder="Search for ancestor…" />
+          </div>
+          <div>
+            <label style={{display:'block', fontSize:13, fontWeight:600, color:'var(--text-muted)', marginBottom:5}}>
+              Descendant (bottom of tree)
+            </label>
+            <SearchSelect people={people} value={descendantId} onChange={setDescendantId} placeholder="Search for descendant…" />
+          </div>
+
+          <div>
+            <label style={{display:'block', fontSize:13, fontWeight:600, color:'var(--text-muted)', marginBottom:8}}>
+              Page Orientation
+            </label>
+            <div style={{display:'flex', gap:8}}>
+              {[['landscape','🖥 Landscape (recommended)'],['portrait','📄 Portrait']].map(([val, label]) => (
+                <button key={val} onClick={() => setOrientation(val)}
+                  style={{flex:1, padding:'10px 8px', border:'2px solid', borderRadius:8, fontFamily:'inherit',
+                    fontSize:13, cursor:'pointer', transition:'all 0.15s',
+                    borderColor: orientation===val ? 'var(--accent)' : 'var(--border)',
+                    background:  orientation===val ? '#fdf6e8' : 'var(--warm-bg)',
+                    color:       orientation===val ? 'var(--accent)' : 'var(--text-muted)',
+                    fontWeight:  orientation===val ? 700 : 400}}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {error && <p style={{color:'var(--danger)', fontSize:13, marginTop:12}}>{error}</p>}
+
+        <div style={{display:'flex', gap:8, justifyContent:'flex-end', marginTop:20}}>
+          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={handlePrint}
+            disabled={!ancestorId || !descendantId}>
+            🖨 Open Print Preview
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Change Log Tab ────────────────────────────────────────────────────────────
 function ChangeLogTab({ changeLog }) {
   if (!changeLog || changeLog.length === 0) return (
@@ -1810,8 +2057,9 @@ function App() {
   }
   const [data, setDataRaw]      = useState(() => cacheLoad() || { people: [], relationships: [], changeLog: [] });
   const [syncStatus, setSyncStatus] = useState('offline');
-  const [tab, setTab]     = useState('tree');
+  const [tab, setTab]       = useState('tree');
   const [editing, setEditing] = useState(null);
+  const [printing, setPrinting] = useState(false);
 
   // On mount: if password is already cached, verify it and load cloud data
   useEffect(() => {
@@ -1957,6 +2205,8 @@ function App() {
             onClick={toggleNick} title="Toggle nickname/full name display">
             {useNick ? 'Full Names' : 'Nicknames'}
           </button>
+          <button className="btn btn-secondary" style={{padding:'4px 10px', fontSize:12}}
+            onClick={() => setPrinting(true)} title="Print family tree">🖨 Print</button>
           <button className="btn btn-secondary" style={{padding:'4px 10px',fontSize:12}}
             onClick={signOut} title="Sign out">Sign out</button>
         </div>
@@ -1997,6 +2247,8 @@ function App() {
       </div>
       {editing && <PersonModal person={editing} people={data.people} relationships={data.relationships}
         onSave={savePerson} onDelete={deletePerson} onClose={() => setEditing(null)} />}
+      {printing && <PrintModal people={data.people} relationships={data.relationships}
+        onClose={() => setPrinting(false)} />}
     </div>
   );
 }
