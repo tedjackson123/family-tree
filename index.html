@@ -1535,7 +1535,7 @@ function findAncestorPath(fromId, toId, people, relationships) {
   return null;
 }
 
-function buildPrintHTML(path, people, relationships, orientation) {
+function buildPrintHTML(path, people, relationships, orientation, fitToPage) {
   const pmap = {}; people.forEach(p => { pmap[p.id] = p; });
 
   function getSpouses(id) {
@@ -1632,10 +1632,21 @@ function buildPrintHTML(path, people, relationships, orientation) {
     if (pageBreakBefore) html += `</div>`;
   });
 
-  const ancestorName    = pmap[path[0].personId]?.fullName || '';
-  const descendantName  = pmap[path[path.length-1].personId]?.fullName || '';
-  const genCount        = path.length - 1;
-  const today           = new Date().toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'});
+  const ancestorName   = pmap[path[0].personId]?.fullName || '';
+  const descendantName = pmap[path[path.length-1].personId]?.fullName || '';
+  const genCount       = path.length - 1;
+  const today          = new Date().toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'});
+
+  // Fit-to-page: estimate content height and compute zoom scale
+  // Portrait usable height ≈ 9in = 864px; landscape ≈ 6.5in = 624px (at 96dpi, 0.7in margins)
+  const usableH   = orientation === 'portrait' ? 864 : 624;
+  const headerH   = 90;  // title + legend
+  const rowH      = 90;  // each generation row (box + connector)
+  const estimatedH = headerH + path.length * rowH;
+  const scale      = fitToPage ? Math.min(1, usableH / estimatedH) : 1;
+  const zoomStyle  = fitToPage ? `zoom: ${scale.toFixed(3)};` : '';
+  // When fitting to one page, suppress page breaks
+  const noBreaks   = fitToPage ? `* { page-break-before: auto !important; page-break-inside: auto !important; }` : '';
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <title>Family Tree: ${ancestorName} to ${descendantName}</title>
@@ -1645,26 +1656,31 @@ function buildPrintHTML(path, people, relationships, orientation) {
   h1 { text-align:center; color:#8b6914; font-size:20px; margin:0 0 4px; letter-spacing:1px; }
   .sub { text-align:center; color:#7a6e5a; font-size:12px; font-style:italic; margin-bottom:6px; }
   .legend { display:flex; gap:16px; justify-content:center; font-size:10px; color:#9a8e7a;
-    margin-bottom:20px; padding-bottom:12px; border-bottom:1px solid #e0d5c4; flex-wrap:wrap; }
+    margin-bottom:16px; padding-bottom:10px; border-bottom:1px solid #e0d5c4; flex-wrap:wrap; }
   .legend-box { display:inline-block; width:12px; height:12px; border-radius:3px;
     vertical-align:middle; margin-right:4px; }
+  .tree-content { ${zoomStyle} transform-origin: top center; }
+  ${noBreaks}
 </style>
 </head><body>
 <h1>Our Family Tree</h1>
-<div class="sub">${ancestorName} &rarr; ${descendantName} &nbsp;·&nbsp; ${genCount} generation${genCount!==1?'s':''} &nbsp;·&nbsp; Printed ${today}</div>
+<div class="sub">${ancestorName} &rarr; ${descendantName} &nbsp;·&nbsp; ${genCount} generation${genCount!==1?'s':''} &nbsp;·&nbsp; ${fitToPage ? `Scaled to ${Math.round(scale*100)}%` : 'Full size'} &nbsp;·&nbsp; Printed ${today}</div>
 <div class="legend">
   <span><span class="legend-box" style="background:#fdf6e8;border:2px solid #8b6914"></span>Direct line</span>
   <span><span class="legend-box" style="background:#eef2fb;border:1px solid #d0c9ba"></span>Spouse</span>
   <span><span class="legend-box" style="background:#f9f7f3;border:1px solid #d0c9ba"></span>Sibling</span>
 </div>
+<div class="tree-content">
 ${html}
+</div>
 </body></html>`;
 }
 
 function PrintModal({ people, relationships, onClose }) {
   const [ancestorId,    setAncestorId]    = useState('');
   const [descendantId,  setDescendantId]  = useState('');
-  const [orientation,   setOrientation]   = useState('landscape');
+  const [orientation,   setOrientation]   = useState('portrait');
+  const [fitToPage,     setFitToPage]     = useState(true);
   const [error,         setError]         = useState('');
 
   function handlePrint() {
@@ -1687,7 +1703,7 @@ function PrintModal({ people, relationships, onClose }) {
       const reversed = findAncestorPath(descendantId, ancestorId, people, relationships);
       if (reversed) finalPath = reversed;
     }
-    const html = buildPrintHTML(finalPath, people, relationships, orientation);
+    const html = buildPrintHTML(finalPath, people, relationships, orientation, fitToPage);
     const win = window.open('', '_blank');
     if (!win) { setError('Pop-up blocked. Please allow pop-ups for this site and try again.'); return; }
     win.document.write(html);
@@ -1723,7 +1739,7 @@ function PrintModal({ people, relationships, onClose }) {
               Page Orientation
             </label>
             <div style={{display:'flex', gap:8}}>
-              {[['landscape','🖥 Landscape (recommended)'],['portrait','📄 Portrait']].map(([val, label]) => (
+              {[['portrait','📄 Portrait'],['landscape','🖥 Landscape']].map(([val, label]) => (
                 <button key={val} onClick={() => setOrientation(val)}
                   style={{flex:1, padding:'10px 8px', border:'2px solid', borderRadius:8, fontFamily:'inherit',
                     fontSize:13, cursor:'pointer', transition:'all 0.15s',
@@ -1734,6 +1750,23 @@ function PrintModal({ people, relationships, onClose }) {
                   {label}
                 </button>
               ))}
+            </div>
+          </div>
+
+          <div style={{display:'flex', alignItems:'flex-start', gap:10, padding:'12px 14px',
+            background:'var(--warm-bg)', border:'1px solid var(--border)', borderRadius:8, cursor:'pointer'}}
+            onClick={() => setFitToPage(f => !f)}>
+            <div style={{width:20, height:20, borderRadius:4, border:'2px solid',
+              borderColor: fitToPage ? 'var(--accent)' : 'var(--border)',
+              background: fitToPage ? 'var(--accent)' : 'white',
+              display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, marginTop:1}}>
+              {fitToPage && <span style={{color:'white', fontSize:13, fontWeight:700}}>✓</span>}
+            </div>
+            <div>
+              <div style={{fontSize:13, fontWeight:600, color:'var(--text)'}}>Fit to one page</div>
+              <div style={{fontSize:12, color:'var(--text-muted)', marginTop:2}}>
+                Scales the tree down to fit everything on a single page. May be small for large trees — the browser's print dialog lets you adjust further.
+              </div>
             </div>
           </div>
         </div>
