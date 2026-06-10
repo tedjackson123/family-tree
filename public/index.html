@@ -346,10 +346,13 @@ function SyncBadge({ status }) {
 
 function PersonModal({ person, people, relationships, onSave, onDelete, onClose }) {
   const isNew = !person.id;
-  const [form, setForm] = useState({
+  const [form, setForm] = useState(() => ({
     fullName: '', nickname: '', maidenName: '', birthYear: '', deathYear: '',
-    birthPlace: '', occupation: '', origin: '', notes: '', ...person
-  });
+    birthPlace: '', occupation: '', origin: '', notes: '', deceased: false,
+    ...person,
+    // Auto-mark deceased if they already have a death year
+    deceased: person.deceased || (!!person.deathYear) || false
+  }));
   const [relType, setRelType] = useState('parent-of');
   const [relTarget, setRelTarget] = useState('');
   const [rels, setRels] = useState(() => {
@@ -412,11 +415,27 @@ function PersonModal({ person, people, relationships, onSave, onDelete, onClose 
           <div className="form-row"><label>Nickname</label><input value={form.nickname} onChange={e => set('nickname', e.target.value)} /></div>
           <div className="form-row"><label>Maiden Name</label><input value={form.maidenName} onChange={e => set('maidenName', e.target.value)} /></div>
           <div className="form-row"><label>Birth Year</label><input value={form.birthYear} onChange={e => set('birthYear', e.target.value)} placeholder="e.g. 1952" /></div>
-          <div className="form-row"><label>Death Year</label><input value={form.deathYear} onChange={e => set('deathYear', e.target.value)} placeholder="Leave blank if living" /></div>
+          <div className="form-row">
+            <label>Death Year</label>
+            <input value={form.deathYear}
+              onChange={e => { set('deathYear', e.target.value); if (e.target.value.trim()) set('deceased', true); }}
+              placeholder="Leave blank if living" />
+          </div>
           <div className="form-row"><label>Birth Place</label><input value={form.birthPlace} onChange={e => set('birthPlace', e.target.value)} /></div>
           <div className="form-row"><label>Occupation</label><input value={form.occupation} onChange={e => set('occupation', e.target.value)} /></div>
         </div>
         <div className="form-row"><label>Origin / Nationality</label><input value={form.origin} onChange={e => set('origin', e.target.value)} /></div>
+        <div className="form-row">
+          <label style={{display:'flex', alignItems:'center', gap:8, cursor:'pointer', userSelect:'none'}}>
+            <input type="checkbox" checked={form.deceased || false}
+              onChange={e => set('deceased', e.target.checked)}
+              style={{width:16, height:16, accentColor:'var(--accent)', cursor:'pointer'}} />
+            <span>Deceased</span>
+            <span style={{fontWeight:400, fontStyle:'italic', color:'var(--text-muted)', fontSize:12}}>
+              (auto-checked when a death year is entered; check manually if year is unknown)
+            </span>
+          </label>
+        </div>
         <div className="form-row"><label>Biographical Notes</label><textarea value={form.notes} onChange={e => set('notes', e.target.value)} /></div>
 
         <div className="rel-section">
@@ -567,10 +586,13 @@ function PeopleTab({ people, relationships, onEdit, onAdd }) {
           const rels = getRelationsFor(p.id);
           return (
           <div key={p.id} className="person-card" onClick={() => onEdit(p)}>
-            <h3>{displayName(p)}</h3>
+            <h3>
+              {displayName(p)}
+              {(p.deceased || p.deathYear) && <span style={{marginLeft:5, color:'var(--text-muted)', fontWeight:400, fontSize:'0.85em'}} title="Deceased">†</span>}
+            </h3>
             {p.nickname && <div className="detail" style={{fontStyle:'italic',color:'var(--text-muted)'}}>({p.fullName})</div>}
             {p.maidenName && <div className="maiden">née {p.maidenName}</div>}
-            {(p.birthYear || p.deathYear) && <div className="detail">{p.birthYear || '?'} – {p.deathYear || 'present'}</div>}
+            {(p.birthYear || p.deathYear) && <div className="detail">{p.birthYear || '?'} – {p.deathYear || (p.deceased ? 'deceased' : 'present')}</div>}
             {p.birthPlace && <div className="detail">{p.birthPlace}</div>}
             {p.occupation && <div className="detail">{p.occupation}</div>}
             {rels.length > 0 && (
@@ -616,16 +638,17 @@ function SphereNode({ x, y, person, isCenter, isFocused, onClick }) {
   const subColor   = isCenter ? '#f5dfa0'  : '#7a6e5a';
   const placeColor = isCenter ? '#e8cc80'  : '#aaa';
   const label = displayName(person);
+  const isDead = person.deceased || !!person.deathYear;
   return (
     <g className="tree-node" onClick={onClick} transform={`translate(${x - NW/2},${y - NH/2})`} style={{cursor:'pointer'}}>
       <rect width={NW} height={NH} rx={9} fill={fill} stroke={stroke} strokeWidth={sWidth}
         style={{filter: isFocused && !isCenter ? 'drop-shadow(0 2px 6px rgba(139,105,20,0.18))' : 'none'}} />
       <text x={NW/2} y={18} textAnchor="middle" fontFamily="Georgia" fontSize={isCenter?13:12} fontWeight="bold" fill={nameColor}>
-        {trunc(label, 19)}
+        {trunc(label, isDead ? 17 : 19)}{isDead ? ' †' : ''}
       </text>
       {person.maidenName && <text x={NW/2} y={30} textAnchor="middle" fontFamily="Georgia" fontSize={9} fontStyle="italic" fill={subColor}>née {trunc(person.maidenName,17)}</text>}
       <text x={NW/2} y={person.maidenName ? 42 : 33} textAnchor="middle" fontFamily="sans-serif" fontSize={9} fill={subColor}>
-        {person.birthYear||'?'} – {person.deathYear||'present'}
+        {person.birthYear||'?'} – {person.deathYear||(isDead?'deceased':'present')}
       </text>
       {person.birthPlace && <text x={NW/2} y={person.maidenName ? 54 : 46} textAnchor="middle" fontFamily="sans-serif" fontSize={8} fill={placeColor}>{trunc(person.birthPlace,22)}</text>}
     </g>
@@ -1250,6 +1273,133 @@ function StoryTab({ people, relationships, password }) {
   );
 }
 
+function buildGedcom(data) {
+  const { people, relationships } = data;
+  const idMap = {};
+  people.forEach((p, i) => { idMap[p.id] = `@I${i+1}@`; });
+
+  // Build parent→children and child→parents maps
+  const parentChildren = {}; // parentId → Set<childId>
+  relationships.forEach(r => {
+    let parentId, childId;
+    if      (r.type === 'parent-of') { parentId = r.from; childId = r.to;   }
+    else if (r.type === 'child-of')  { parentId = r.to;   childId = r.from; }
+    else return;
+    if (!parentChildren[parentId]) parentChildren[parentId] = new Set();
+    parentChildren[parentId].add(childId);
+  });
+  const childParents = {}; // childId → Set<parentId>
+  Object.entries(parentChildren).forEach(([parentId, children]) => {
+    children.forEach(childId => {
+      if (!childParents[childId]) childParents[childId] = new Set();
+      childParents[childId].add(parentId);
+    });
+  });
+
+  // Create family units from spouse-of relationships
+  const families = [];
+  const seenPairs = new Set();
+  const personFamsAsSpouse = {}; // personId → [famIdx]
+  relationships.forEach(r => {
+    if (r.type !== 'spouse-of') return;
+    const key = [r.from, r.to].sort().join('|');
+    if (seenPairs.has(key)) return;
+    seenPairs.add(key);
+    const idx = families.length;
+    families.push({ id: `@F${idx+1}@`, husb: r.from, wife: r.to, children: new Set() });
+    [r.from, r.to].forEach(pid => {
+      if (!personFamsAsSpouse[pid]) personFamsAsSpouse[pid] = [];
+      personFamsAsSpouse[pid].push(idx);
+    });
+  });
+
+  // Assign children to families; create single-parent families if needed
+  const childFamIdx = {}; // childId → famIdx
+  Object.entries(childParents).forEach(([childId, parentIds]) => {
+    const pArr = [...parentIds];
+    // Find existing family containing all these parents
+    let found = -1;
+    for (let i = 0; i < families.length; i++) {
+      const f = families[i];
+      const fps = new Set([f.husb, f.wife].filter(Boolean));
+      if (pArr.every(pid => fps.has(pid))) { found = i; break; }
+    }
+    if (found >= 0) {
+      families[found].children.add(childId);
+      childFamIdx[childId] = found;
+    } else {
+      // Create a new family for this parent group
+      const idx = families.length;
+      families.push({ id: `@F${idx+1}@`, husb: pArr[0] || null, wife: pArr[1] || null, children: new Set([childId]) });
+      childFamIdx[childId] = idx;
+      pArr.forEach(pid => {
+        if (!personFamsAsSpouse[pid]) personFamsAsSpouse[pid] = [];
+        personFamsAsSpouse[pid].push(idx);
+      });
+    }
+  });
+
+  const lines = [];
+  lines.push('0 HEAD');
+  lines.push('1 SOUR FamilyTreeApp');
+  lines.push('1 GEDC');
+  lines.push('2 VERS 5.5.1');
+  lines.push('2 FORM LINEAGE-LINKED');
+  lines.push('1 CHAR UTF-8');
+  lines.push(`1 DATE ${new Date().toLocaleDateString('en-US',{day:'2-digit',month:'short',year:'numeric'}).toUpperCase()}`);
+
+  people.forEach(p => {
+    const gid = idMap[p.id];
+    const parts = p.fullName.trim().split(/\s+/);
+    // Handle suffixes — last non-suffix word = surname
+    const SUFF = new Set(['jr','jr.','sr','sr.','ii','iii','iv','v','vi']);
+    const suffixParts = [];
+    const coreParts = [...parts];
+    while (coreParts.length > 1 && SUFF.has(coreParts[coreParts.length-1].toLowerCase())) {
+      suffixParts.unshift(coreParts.pop());
+    }
+    const lastName = coreParts.length > 1 ? coreParts.pop() : '';
+    const firstName = coreParts.join(' ');
+    const suffix = suffixParts.join(' ');
+
+    lines.push(`0 ${gid} INDI`);
+    lines.push(`1 NAME ${firstName} /${lastName}/${suffix ? ' '+suffix : ''}`);
+    if (p.nickname) lines.push(`2 NICK ${p.nickname}`);
+    if (p.maidenName) {
+      lines.push(`1 NAME ${p.maidenName} //`);
+      lines.push(`2 TYPE maiden`);
+    }
+    if (p.birthYear || p.birthPlace) {
+      lines.push('1 BIRT');
+      if (p.birthYear) lines.push(`2 DATE ${p.birthYear}`);
+      if (p.birthPlace) lines.push(`2 PLAC ${p.birthPlace}`);
+    }
+    if (p.deceased || p.deathYear) {
+      lines.push('1 DEAT Y');
+      if (p.deathYear) lines.push(`2 DATE ${p.deathYear}`);
+    }
+    if (p.occupation) lines.push(`1 OCCU ${p.occupation}`);
+    if (p.origin)     lines.push(`1 NATI ${p.origin}`);
+    if (p.notes) {
+      const noteLines = p.notes.split('\n');
+      lines.push(`1 NOTE ${noteLines[0]}`);
+      noteLines.slice(1).forEach(l => lines.push(`2 CONT ${l}`));
+    }
+    (personFamsAsSpouse[p.id] || []).forEach(fi => lines.push(`1 FAMS ${families[fi].id}`));
+    if (childFamIdx[p.id] !== undefined) lines.push(`1 FAMC ${families[childFamIdx[p.id]].id}`);
+  });
+
+  families.forEach(f => {
+    lines.push(`0 ${f.id} FAM`);
+    if (f.husb && idMap[f.husb]) lines.push(`1 HUSB ${idMap[f.husb]}`);
+    if (f.wife && idMap[f.wife]) lines.push(`1 WIFE ${idMap[f.wife]}`);
+    [...f.children].forEach(cid => { if (idMap[cid]) lines.push(`1 CHIL ${idMap[cid]}`); });
+  });
+
+  lines.push('0 TRLR');
+  return lines.join('\r\n');
+}
+
 function ShareTab({ data, onImport }) {
   const [importText, setImportText] = useState('');
   const [msg, setMsg] = useState('');
@@ -1259,6 +1409,16 @@ function ShareTab({ data, onImport }) {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = 'family-tree.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function exportGedcom() {
+    const content = buildGedcom(data);
+    const blob = new Blob([content], { type: 'text/plain' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'family-tree.ged';
     a.click();
     URL.revokeObjectURL(a.href);
   }
@@ -1296,10 +1456,16 @@ function ShareTab({ data, onImport }) {
       <div className="share-section">
         <h3>Export</h3>
         <p style={{color:'var(--text-muted)',fontSize:14,marginBottom:8}}>Download or copy your family tree data to share with family.</p>
-        <div style={{display:'flex',gap:8}}>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
           <button className="btn btn-primary" onClick={exportJson}>Download JSON</button>
           <button className="btn btn-secondary" onClick={copyJson}>Copy to Clipboard</button>
+          <button className="btn btn-secondary" onClick={exportGedcom} title="Export as GEDCOM — compatible with Ancestry, FamilySearch, MyHeritage, and most genealogy software">
+            📥 Export GEDCOM (.ged)
+          </button>
         </div>
+        <p style={{color:'var(--text-muted)',fontSize:12,marginTop:6,fontStyle:'italic'}}>
+          GEDCOM is the standard genealogy format — your cousin can import the .ged file into Ancestry, FamilySearch, MyHeritage, Gramps, and most other family tree apps.
+        </p>
         {data.people.length > 0 && <div className="json-preview">{JSON.stringify(data, null, 2).slice(0, 500)}...</div>}
       </div>
       <div className="share-section">
@@ -1559,9 +1725,10 @@ function buildPrintHTML(path, people, relationships, orientation, fitToPage) {
   function personBoxHTML(p, role) {
     const isPath   = role === 'path';
     const isSpouse = role === 'spouse';
+    const isDead = p.deceased || !!p.deathYear;
     const years = p.birthYear
-      ? `${p.birthYear}${p.deathYear ? ` – ${p.deathYear}` : ' – present'}`
-      : (p.deathYear ? `? – ${p.deathYear}` : '');
+      ? `${p.birthYear}${p.deathYear ? ` – ${p.deathYear}` : (isDead ? ' – deceased' : ' – present')}`
+      : (p.deathYear ? `? – ${p.deathYear}` : (isDead ? 'deceased' : ''));
     const extras = [p.birthPlace, p.occupation].filter(Boolean);
     const bg     = isPath ? '#fdf6e8' : isSpouse ? '#eef2fb' : '#f9f7f3';
     const border = isPath ? '2px solid #8b6914' : '1px solid #d0c9ba';
