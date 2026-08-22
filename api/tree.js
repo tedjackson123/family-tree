@@ -2,9 +2,11 @@
 // Uses Cloudflare R2 (S3-compatible) for storage.
 // Required env vars: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME
 
-const { S3Client, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, GetObjectCommand, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 
-const OBJECT_KEY = 'family_tree.json';
+const OBJECT_KEY   = 'family_tree.json';
+const BACKUP_PREFIX = 'backups/family_tree_';
+const MAX_BACKUPS   = 10;
 
 function getClient() {
   const accountId       = process.env.R2_ACCOUNT_ID;
@@ -26,6 +28,34 @@ async function streamToString(stream) {
   const chunks = [];
   for await (const chunk of stream) chunks.push(chunk);
   return Buffer.concat(chunks).toString('utf-8');
+}
+
+// Write a dated backup and prune old ones, keeping only MAX_BACKUPS
+async function writeBackup(client, bucket, body) {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const backupKey = `${BACKUP_PREFIX}${timestamp}.json`;
+
+  // Write the new backup
+  await client.send(new PutObjectCommand({
+    Bucket: bucket, Key: backupKey, Body: body, ContentType: 'application/json',
+  }));
+
+  // List all backups and delete oldest if over limit
+  try {
+    const list = await client.send(new ListObjectsV2Command({
+      Bucket: bucket, Prefix: BACKUP_PREFIX,
+    }));
+    const objects = (list.Contents || []).sort((a, b) => a.Key.localeCompare(b.Key));
+    if (objects.length > MAX_BACKUPS) {
+      const toDelete = objects.slice(0, objects.length - MAX_BACKUPS);
+      await Promise.all(toDelete.map(o =>
+        client.send(new DeleteObjectCommand({ Bucket: bucket, Key: o.Key }))
+      ));
+    }
+  } catch (e) {
+    // Pruning failure is non-fatal — don't block the save
+    console.warn('Backup pruning failed:', e.message);
+  }
 }
 
 module.exports = async function handler(req, res) {
@@ -65,12 +95,15 @@ module.exports = async function handler(req, res) {
 
     if (req.method === 'POST') {
       const body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
-      await client.send(new PutObjectCommand({
-        Bucket: bucket,
-        Key: OBJECT_KEY,
-        Body: body,
-        ContentType: 'application/json',
-      }));
+
+      // Save live file and backup in parallel
+      await Promise.all([
+        client.send(new PutObjectCommand({
+          Bucket: bucket, Key: OBJECT_KEY, Body: body, ContentType: 'application/json',
+        })),
+        writeBackup(client, bucket, body),
+      ]);
+
       return res.json({ ok: true, savedAt: new Date().toISOString() });
     }
 
