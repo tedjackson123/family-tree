@@ -19,8 +19,8 @@ function getR2Config() {
 
 // Minimal AWS Signature V4 for R2 (S3-compatible)
 async function sign(cfg, method, path, body) {
-  const { accountId, accessKeyId, secretAccessKey, bucket } = cfg;
-  const host = `${bucket}.${accountId}.r2.cloudflarestorage.com`;
+  const { accountId, accessKeyId, secretAccessKey } = cfg;
+  const host = `${accountId}.r2.cloudflarestorage.com`;
   const now = new Date();
   const amzDate = now.toISOString().replace(/[:\-]|\.\d{3}/g, '').slice(0, 15) + 'Z';
   const dateStamp = amzDate.slice(0, 8);
@@ -63,7 +63,7 @@ function buf2hex(buf) { return Buffer.from(buf).toString('hex'); }
 
 function r2Request(cfg, method, body) {
   return new Promise(async (resolve, reject) => {
-    const path = `/${OBJECT_KEY}`;
+    const path = `/${cfg.bucket}/${OBJECT_KEY}`;
     const signed = await sign(cfg, method, path, body);
     const options = {
       hostname: signed.host,
