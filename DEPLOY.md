@@ -26,12 +26,15 @@ git push -u origin main
 
 Vercel will give you a URL like `https://family-tree-abc123.vercel.app`
 
-### 3. Set up Upstash Redis (database)
+### 3. Set up Cloudflare R2 (storage)
 
-1. In your Vercel project dashboard, click **Integrations** in the left sidebar
-2. Search for **Upstash Redis** and click **Add Integration**
-3. Create a free Redis database (select the region closest to you)
-4. Connect it to your project — Vercel auto-adds `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` env vars
+1. In the Cloudflare dashboard, go to **R2 Object Storage** and create a bucket named `family-tree`
+2. Go to **R2 → Manage API Tokens** and create an API token:
+   - Permission: **Object Read & Write**
+   - Scope: limit it to the `family-tree` bucket only
+3. Copy the **Account ID**, **Access Key ID**, and **Secret Access Key** (the secret is shown only once)
+
+The app saves the tree to `family_tree.json` in the bucket. Every save also writes a timestamped copy under `backups/`, keeping the last 10.
 
 ### 4. Set your environment variables
 
@@ -40,11 +43,17 @@ In Vercel project dashboard → **Settings** → **Environment Variables**, add:
 | Name | Value | Notes |
 |------|-------|-------|
 | `FAMILY_PASSWORD` | `your-family-password` | Share this with family |
+| `R2_ACCOUNT_ID` | Cloudflare account ID | |
+| `R2_ACCESS_KEY_ID` | R2 API token access key | |
+| `R2_SECRET_ACCESS_KEY` | R2 API token secret | |
+| `R2_BUCKET_NAME` | `family-tree` | |
 | `ANTHROPIC_API_KEY` | `sk-ant-...` | Optional — for story generation without entering a key each time |
 
 ### 5. Redeploy
 
 After adding env vars, go to **Deployments** → click the three dots on the latest deployment → **Redeploy**.
+
+If the Production badge ends up on an old "Redeploy" after several redeploys, use **Promote** on the deployment you want live.
 
 ### 6. Share with family
 
@@ -80,6 +89,8 @@ If you've been using the app locally and have data in localStorage:
 5. Go to **Save & Share** → **Import** → upload the JSON file
 
 Your data will be saved to the cloud and available to all family members.
+
+**Backups:** download a fresh JSON from **Save & Share** every so often, so you have a copy outside R2.
 
 ---
 
